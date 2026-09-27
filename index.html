@@ -6,6 +6,7 @@
   <title>GPX 跑步路線分析</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
   <style>
     :root {
       --bg: #0f1419;
@@ -724,13 +725,33 @@
         if (!run.visible) return;
 
         const latlngs = run.points.map(p => [p.lat, p.lon]);
+        const isSelected = run.id === selectedId;
         const poly = L.polyline(latlngs, {
           color: run.color,
-          weight: run.id === selectedId ? 5 : 3,
-          opacity: run.id === selectedId ? 0.95 : 0.65,
+          weight: isSelected ? 5 : 3,
+          opacity: isSelected ? 0.95 : 0.65,
           lineJoin: 'round'
         });
-        run.layer = L.layerGroup([poly]);
+
+        // Direction arrows along the route
+        const decorator = L.polylineDecorator(poly, {
+          patterns: [{
+            offset: 40,
+            repeat: isSelected ? 80 : 120,
+            symbol: L.Symbol.arrowHead({
+              pixelSize: isSelected ? 10 : 8,
+              polygon: false,
+              pathOptions: {
+                stroke: true,
+                color: run.color,
+                weight: isSelected ? 2.5 : 2,
+                opacity: isSelected ? 0.95 : 0.7
+              }
+            })
+          }]
+        });
+
+        run.layer = L.layerGroup([poly, decorator]);
         if (showTracks) run.layer.addTo(map);
 
         // Start / end
