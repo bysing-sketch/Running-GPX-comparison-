@@ -338,15 +338,44 @@
     }
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
+    .lang-switch {
+      display: flex;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .lang-switch button {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.35rem 0.55rem;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+    }
+    .lang-switch button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .lang-switch button:hover:not(.active) {
+      color: var(--text);
+      background: rgba(59,130,246,0.15);
+    }
   </style>
 </head>
 <body>
   <header>
-    <h1>🏃 <span>GPX</span> 跑步路線分析</h1>
+    <h1>🏃 <span>GPX</span> <span data-i18n="appTitle">跑步路線分析</span></h1>
     <div class="upload-zone">
-      <label class="btn" for="fileInput">＋ 匯入 GPX</label>
+      <div class="lang-switch" id="langSwitch">
+        <button type="button" data-lang="zh" class="active">中</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <label class="btn" for="fileInput" data-i18n="importBtn">＋ 匯入 GPX</label>
       <input type="file" id="fileInput" accept=".gpx,application/gpx+xml,text/xml" multiple />
-      <button class="btn btn-secondary" id="clearBtn" disabled>全部清除</button>
+      <button class="btn btn-secondary" id="clearBtn" disabled data-i18n="clearAll">全部清除</button>
     </div>
   </header>
 
@@ -356,50 +385,50 @@
       <div class="error-banner" id="errorBanner"></div>
 
       <div id="emptyState" class="empty-state">
-        <p>匯入一個或多個 GPX 開始分析</p>
-        <p class="hint">可一次選多個檔，疊喺同一地圖比較<br>支援 Apple Watch / WorkoutGPX / HealthFit</p>
+        <p data-i18n="emptyTitle">匯入一個或多個 GPX 開始分析</p>
+        <p class="hint" data-i18n-html="emptyHint">可一次選多個檔，疊喺同一地圖比較<br>支援 Apple Watch / WorkoutGPX / HealthFit</p>
       </div>
 
       <div id="content" style="display:none">
         <!-- Loaded runs -->
         <div class="panel">
-          <h2>已載入路線 <span id="runCount" style="color:var(--text);font-weight:600"></span></h2>
+          <h2><span data-i18n="loadedRoutes">已載入路線</span> <span id="runCount" style="color:var(--text);font-weight:600"></span></h2>
           <div class="run-list" id="runList"></div>
         </div>
 
         <div class="tabs">
-          <button class="tab active" data-tab="detail">詳情</button>
-          <button class="tab" data-tab="compare">比較</button>
+          <button class="tab active" data-tab="detail" data-i18n="tabDetail">詳情</button>
+          <button class="tab" data-tab="compare" data-i18n="tabCompare">比較</button>
         </div>
 
         <!-- Detail tab (selected run) -->
         <div class="tab-panel active" id="tab-detail">
           <div class="panel">
-            <h2>總覽 <span id="detailName" style="text-transform:none;letter-spacing:0;color:var(--text);font-weight:500"></span></h2>
+            <h2><span data-i18n="overview">總覽</span> <span id="detailName" style="text-transform:none;letter-spacing:0;color:var(--text);font-weight:500"></span></h2>
             <div class="stats-grid" id="summaryStats"></div>
           </div>
           <div class="panel">
-            <h2>心率分佈</h2>
+            <h2 data-i18n="hrDistribution">心率分佈</h2>
             <div class="hr-bar" id="hrBar"></div>
             <div class="hr-legend" id="hrLegend"></div>
             <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
           </div>
           <div class="panel">
-            <h2>每公里分段</h2>
+            <h2 data-i18n="kmSplits">每公里分段</h2>
             <div class="controls">
-              <label class="toggle"><input type="checkbox" id="showMarkers" checked /> 公里標記</label>
-              <label class="toggle"><input type="checkbox" id="showOtherMarkers" checked /> 其他路線標記</label>
-              <label class="toggle"><input type="checkbox" id="showTracks" checked /> 路線</label>
+              <label class="toggle"><input type="checkbox" id="showMarkers" checked /> <span data-i18n="kmMarkers">公里標記</span></label>
+              <label class="toggle"><input type="checkbox" id="showOtherMarkers" checked /> <span data-i18n="otherMarkers">其他路線標記</span></label>
+              <label class="toggle"><input type="checkbox" id="showTracks" checked /> <span data-i18n="tracks">路線</span></label>
             </div>
             <div style="overflow-x:auto">
               <table>
                 <thead>
                   <tr>
-                    <th>公里</th>
-                    <th>到達</th>
-                    <th>配速</th>
-                    <th>平均心率</th>
-                    <th>爬升</th>
+                    <th data-i18n="thKm">公里</th>
+                    <th data-i18n="thArrival">到達</th>
+                    <th data-i18n="thPace">配速</th>
+                    <th data-i18n="thAvgHr">平均心率</th>
+                    <th data-i18n="thElev">爬升</th>
                   </tr>
                 </thead>
                 <tbody id="splitsBody"></tbody>
@@ -411,7 +440,7 @@
         <!-- Compare tab -->
         <div class="tab-panel" id="tab-compare">
           <div class="panel">
-            <h2>總覽比較</h2>
+            <h2 data-i18n="compareOverview">總覽比較</h2>
             <div class="compare-wrap">
               <table class="compare-table" id="compareSummary">
                 <thead></thead>
@@ -420,7 +449,7 @@
             </div>
           </div>
           <div class="panel">
-            <h2>每公里配速比較</h2>
+            <h2 data-i18n="comparePace">每公里配速比較</h2>
             <div class="compare-wrap">
               <table class="compare-table" id="compareSplits">
                 <thead></thead>
@@ -429,7 +458,7 @@
             </div>
           </div>
           <div class="panel">
-            <h2>每公里心率比較</h2>
+            <h2 data-i18n="compareHr">每公里心率比較</h2>
             <div class="compare-wrap">
               <table class="compare-table" id="compareHR">
                 <thead></thead>
@@ -443,6 +472,161 @@
   </main>
 
   <script>
+    // ========== i18n ==========
+    const I18N = {
+      zh: {
+        appTitle: '跑步路線分析',
+        importBtn: '＋ 匯入 GPX',
+        clearAll: '全部清除',
+        emptyTitle: '匯入一個或多個 GPX 開始分析',
+        emptyHint: '可一次選多個檔，疊喺同一地圖比較<br>支援 Apple Watch / WorkoutGPX / HealthFit',
+        loadedRoutes: '已載入路線',
+        tabDetail: '詳情',
+        tabCompare: '比較',
+        overview: '總覽',
+        hrDistribution: '心率分佈',
+        kmSplits: '每公里分段',
+        kmMarkers: '公里標記',
+        otherMarkers: '其他路線標記',
+        tracks: '路線',
+        thKm: '公里',
+        thArrival: '到達',
+        thPace: '配速',
+        thAvgHr: '平均心率',
+        thElev: '爬升',
+        compareOverview: '總覽比較',
+        comparePace: '每公里配速比較',
+        compareHr: '每公里心率比較',
+        date: '日期',
+        startTime: '開始時間',
+        totalDist: '總距離',
+        elapsed: '經過時間',
+        avgPace: '平均配速',
+        points: '軌跡點',
+        avgHr: '平均心率',
+        maxHr: '最高心率',
+        elevGain: '爬升',
+        elevLoss: '下降',
+        start: '開始',
+        dist: '距離',
+        noHrData: '呢個 GPX 冇心率數據',
+        noHrChart: '無心率數據',
+        startPoint: '起點',
+        endPoint: '終點',
+        kmN: '第 {n} 公里',
+        arrival: '到達',
+        splitTime: '本段',
+        elevChange: '海拔變化',
+        showHide: '顯示/隱藏',
+        remove: '移除',
+        errBadGpx: 'GPX 檔案格式錯誤，無法解析',
+        errNoTrack: 'GPX 入面搵唔到軌跡點 (trkpt)',
+        errFewPoints: '軌跡點太少，無法分析',
+        errSelectGpx: '請選擇 .gpx 檔案',
+        errReadFail: '讀取 {name} 失敗',
+        pageTitle: 'GPX 跑步路線分析',
+      },
+      en: {
+        appTitle: 'Run Route Analyzer',
+        importBtn: '+ Import GPX',
+        clearAll: 'Clear all',
+        emptyTitle: 'Import one or more GPX files to start',
+        emptyHint: 'Select multiple files to overlay and compare on the map<br>Supports Apple Watch / WorkoutGPX / HealthFit',
+        loadedRoutes: 'Loaded routes',
+        tabDetail: 'Detail',
+        tabCompare: 'Compare',
+        overview: 'Overview',
+        hrDistribution: 'Heart rate',
+        kmSplits: 'Km splits',
+        kmMarkers: 'Km markers',
+        otherMarkers: 'Other route markers',
+        tracks: 'Tracks',
+        thKm: 'Km',
+        thArrival: 'Arrival',
+        thPace: 'Pace',
+        thAvgHr: 'Avg HR',
+        thElev: 'Elev',
+        compareOverview: 'Overview comparison',
+        comparePace: 'Pace by km',
+        compareHr: 'HR by km',
+        date: 'Date',
+        startTime: 'Start time',
+        totalDist: 'Distance',
+        elapsed: 'Elapsed',
+        avgPace: 'Avg pace',
+        points: 'Track points',
+        avgHr: 'Avg HR',
+        maxHr: 'Max HR',
+        elevGain: 'Elev gain',
+        elevLoss: 'Elev loss',
+        start: 'Start',
+        dist: 'Distance',
+        noHrData: 'No heart rate data in this GPX',
+        noHrChart: 'No HR data',
+        startPoint: 'Start',
+        endPoint: 'Finish',
+        kmN: 'Km {n}',
+        arrival: 'Arrival',
+        splitTime: 'Split',
+        elevChange: 'Elevation',
+        showHide: 'Show/Hide',
+        remove: 'Remove',
+        errBadGpx: 'Invalid GPX file',
+        errNoTrack: 'No track points found in GPX',
+        errFewPoints: 'Not enough track points',
+        errSelectGpx: 'Please select a .gpx file',
+        errReadFail: 'Failed to read {name}',
+        pageTitle: 'GPX Run Route Analyzer',
+      }
+    };
+
+    let lang = localStorage.getItem('gpx-lang') || 'zh';
+    if (!I18N[lang]) lang = 'zh';
+
+    function t(key, vars) {
+      let s = (I18N[lang] && I18N[lang][key]) || (I18N.zh[key]) || key;
+      if (vars) {
+        Object.keys(vars).forEach(k => {
+          s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]);
+        });
+      }
+      return s;
+    }
+
+    function applyStaticI18n() {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-html]').forEach(el => {
+        const key = el.getAttribute('data-i18n-html');
+        el.innerHTML = t(key);
+      });
+      document.title = t('pageTitle');
+      document.querySelectorAll('#langSwitch button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === lang);
+      });
+    }
+
+    function setLang(next) {
+      if (!I18N[next] || next === lang) return;
+      lang = next;
+      localStorage.setItem('gpx-lang', lang);
+      applyStaticI18n();
+      // Re-render dynamic content
+      if (runs.length) {
+        renderRunList();
+        const run = runs.find(r => r.id === selectedId);
+        if (run) {
+          renderSummary(run.summary);
+          renderHR(run.points);
+          renderSplits(run.splits);
+          rebuildMapLayers();
+        }
+        renderCompare();
+      }
+    }
+
     // ========== Colors ==========
     const RUN_COLORS = [
       '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7',
@@ -520,12 +704,12 @@
       const parser = new DOMParser();
       const doc = parser.parseFromString(xmlText, 'application/xml');
       if (doc.querySelector('parsererror')) {
-        throw new Error('GPX 檔案格式錯誤，無法解析');
+        throw new Error(t('errBadGpx'));
       }
 
       let pts = [...doc.querySelectorAll('trkpt')];
       if (pts.length === 0) pts = [...doc.querySelectorAll('rtept')];
-      if (pts.length === 0) throw new Error('GPX 入面搵唔到軌跡點 (trkpt)');
+      if (pts.length === 0) throw new Error(t('errNoTrack'));
 
       const points = [];
       for (const el of pts) {
@@ -553,7 +737,7 @@
         });
       }
 
-      if (points.length < 2) throw new Error('軌跡點太少，無法分析');
+      if (points.length < 2) throw new Error(t('errFewPoints'));
 
       let dist = 0;
       points[0].dist = 0;
@@ -765,7 +949,7 @@
           fillOpacity: seOpacity,
           opacity: seOpacity,
           weight: 2
-        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">起點</div>`);
+        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">${t('startPoint')}</div>`);
         const end = L.circleMarker([run.points[run.points.length-1].lat, run.points[run.points.length-1].lon], {
           radius: isSelected ? 7 : 5,
           color: run.color,
@@ -773,7 +957,7 @@
           fillOpacity: seOpacity,
           opacity: seOpacity,
           weight: 2
-        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">終點</div>`);
+        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">${t('endPoint')}</div>`);
 
         const markers = [start, end];
 
@@ -806,11 +990,11 @@
             });
             const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: zIndex });
             m.bindPopup(`
-              <div class="popup-title">${run.name} · 第 ${label} 公里</div>
-              <div class="popup-row">到達：${fmt.time(s.cumDuration)}</div>
-              <div class="popup-row">本段：${fmt.time(s.duration)}（${fmt.pace(s.pace)}）</div>
-              <div class="popup-row">平均心率：${fmt.hr(s.avgHr)}</div>
-              <div class="popup-row">海拔變化：${fmt.elev(s.elevDelta)}</div>
+              <div class="popup-title">${run.name} · ${t('kmN', { n: label })}</div>
+              <div class="popup-row">${t('arrival')}：${fmt.time(s.cumDuration)}</div>
+              <div class="popup-row">${t('splitTime')}：${fmt.time(s.duration)}（${fmt.pace(s.pace)}）</div>
+              <div class="popup-row">${t('avgHr')}：${fmt.hr(s.avgHr)}</div>
+              <div class="popup-row">${t('elevChange')}：${fmt.elev(s.elevDelta)}</div>
             `);
             markers.push(m);
           });
@@ -847,8 +1031,8 @@
             <div class="run-meta">${fmt.date(r.summary.startTime)} · ${fmt.dist(r.summary.dist)} · ${fmt.time(r.summary.duration)}</div>
           </div>
           <div class="run-actions">
-            <button class="icon-btn" data-action="toggle" title="顯示/隱藏">${r.visible ? '👁' : '👁‍🗨'}</button>
-            <button class="icon-btn" data-action="remove" title="移除">✕</button>
+            <button class="icon-btn" data-action="toggle" title="${t('showHide')}">${r.visible ? '👁' : '👁‍🗨'}</button>
+            <button class="icon-btn" data-action="remove" title="${t('remove')}">✕</button>
           </div>
         </div>
       `).join('');
@@ -873,16 +1057,16 @@
 
     function renderSummary(sum) {
       $('#summaryStats').innerHTML = `
-        <div class="stat"><div class="stat-label">日期</div><div class="stat-value" style="font-size:0.95rem">${fmt.date(sum.startTime)}</div></div>
-        <div class="stat"><div class="stat-label">開始時間</div><div class="stat-value" style="font-size:0.95rem">${fmt.clock(sum.startTime)}</div></div>
-        <div class="stat"><div class="stat-label">總距離</div><div class="stat-value">${fmt.dist(sum.dist)}</div></div>
-        <div class="stat"><div class="stat-label">經過時間</div><div class="stat-value">${fmt.time(sum.duration)}</div></div>
-        <div class="stat"><div class="stat-label">平均配速</div><div class="stat-value">${fmt.pace(sum.pace)}</div></div>
-        <div class="stat"><div class="stat-label">軌跡點</div><div class="stat-value">${sum.pointCount.toLocaleString()}</div></div>
-        <div class="stat"><div class="stat-label">平均心率</div><div class="stat-value">${fmt.hr(sum.avgHr)}</div></div>
-        <div class="stat"><div class="stat-label">最高心率</div><div class="stat-value">${fmt.hr(sum.maxHr)}</div></div>
-        <div class="stat"><div class="stat-label">爬升</div><div class="stat-value">${Math.round(sum.elevGain)} <small>m</small></div></div>
-        <div class="stat"><div class="stat-label">下降</div><div class="stat-value">${Math.round(sum.elevLoss)} <small>m</small></div></div>
+        <div class="stat"><div class="stat-label">${t('date')}</div><div class="stat-value" style="font-size:0.95rem">${fmt.date(sum.startTime)}</div></div>
+        <div class="stat"><div class="stat-label">${t('startTime')}</div><div class="stat-value" style="font-size:0.95rem">${fmt.clock(sum.startTime)}</div></div>
+        <div class="stat"><div class="stat-label">${t('totalDist')}</div><div class="stat-value">${fmt.dist(sum.dist)}</div></div>
+        <div class="stat"><div class="stat-label">${t('elapsed')}</div><div class="stat-value">${fmt.time(sum.duration)}</div></div>
+        <div class="stat"><div class="stat-label">${t('avgPace')}</div><div class="stat-value">${fmt.pace(sum.pace)}</div></div>
+        <div class="stat"><div class="stat-label">${t('points')}</div><div class="stat-value">${sum.pointCount.toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">${t('avgHr')}</div><div class="stat-value">${fmt.hr(sum.avgHr)}</div></div>
+        <div class="stat"><div class="stat-label">${t('maxHr')}</div><div class="stat-value">${fmt.hr(sum.maxHr)}</div></div>
+        <div class="stat"><div class="stat-label">${t('elevGain')}</div><div class="stat-value">${Math.round(sum.elevGain)} <small>m</small></div></div>
+        <div class="stat"><div class="stat-label">${t('elevLoss')}</div><div class="stat-value">${Math.round(sum.elevLoss)} <small>m</small></div></div>
       `;
     }
 
@@ -892,7 +1076,7 @@
       const legend = $('#hrLegend');
       if (!hrs.length) {
         bar.innerHTML = '';
-        legend.innerHTML = '<span>呢個 GPX 冇心率數據</span>';
+        legend.innerHTML = `<span>${t('noHrData')}</span>`;
         drawHRChart([]);
         return;
       }
@@ -932,7 +1116,7 @@
         ctx.fillStyle = '#8b9cb3';
         ctx.font = '12px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('無心率數據', W / 2, H / 2);
+        ctx.fillText(t('noHrChart'), W / 2, H / 2);
         return;
       }
 
@@ -1014,14 +1198,14 @@
       // Summary comparison
       const sumTable = $('#compareSummary');
       const metrics = [
-        { key: 'startTime', label: '日期', fmt: (r) => fmt.date(r.summary.startTime), best: null },
-        { key: 'startClock', label: '開始', fmt: (r) => fmt.clock(r.summary.startTime), best: null },
-        { key: 'dist', label: '距離', fmt: (r) => fmt.dist(r.summary.dist), best: 'max' },
-        { key: 'duration', label: '經過時間', fmt: (r) => fmt.time(r.summary.duration), best: 'min' },
-        { key: 'pace', label: '平均配速', fmt: (r) => fmt.pace(r.summary.pace), best: 'min' },
-        { key: 'avgHr', label: '平均心率', fmt: (r) => fmt.hr(r.summary.avgHr), best: null },
-        { key: 'maxHr', label: '最高心率', fmt: (r) => fmt.hr(r.summary.maxHr), best: null },
-        { key: 'elevGain', label: '爬升', fmt: (r) => Math.round(r.summary.elevGain) + ' m', best: null },
+        { key: 'startTime', label: t('date'), fmt: (r) => fmt.date(r.summary.startTime), best: null },
+        { key: 'startClock', label: t('start'), fmt: (r) => fmt.clock(r.summary.startTime), best: null },
+        { key: 'dist', label: t('dist'), fmt: (r) => fmt.dist(r.summary.dist), best: 'max' },
+        { key: 'duration', label: t('elapsed'), fmt: (r) => fmt.time(r.summary.duration), best: 'min' },
+        { key: 'pace', label: t('avgPace'), fmt: (r) => fmt.pace(r.summary.pace), best: 'min' },
+        { key: 'avgHr', label: t('avgHr'), fmt: (r) => fmt.hr(r.summary.avgHr), best: null },
+        { key: 'maxHr', label: t('maxHr'), fmt: (r) => fmt.hr(r.summary.maxHr), best: null },
+        { key: 'elevGain', label: t('elevGain'), fmt: (r) => Math.round(r.summary.elevGain) + ' m', best: null },
       ];
 
       sumTable.querySelector('thead').innerHTML = `<tr>
@@ -1051,7 +1235,7 @@
       ));
       const paceTable = $('#compareSplits');
       paceTable.querySelector('thead').innerHTML = `<tr>
-        <th>公里</th>
+        <th>${t('thKm')}</th>
         ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,10)}</th>`).join('')}
       </tr>`;
       let paceRows = '';
@@ -1071,7 +1255,7 @@
       // HR splits comparison
       const hrTable = $('#compareHR');
       hrTable.querySelector('thead').innerHTML = `<tr>
-        <th>公里</th>
+        <th>${t('thKm')}</th>
         ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,10)}</th>`).join('')}
       </tr>`;
       let hrRows = '';
@@ -1165,7 +1349,7 @@
         f.name.toLowerCase().endsWith('.gpx') || f.type.includes('xml')
       );
       if (!files.length) {
-        showError('請選擇 .gpx 檔案');
+        showError(t('errSelectGpx'));
         return;
       }
       let loaded = 0;
@@ -1180,7 +1364,7 @@
             showError(`${file.name}: ${err.message}`);
           }
         };
-        reader.onerror = () => showError(`讀取 ${file.name} 失敗`);
+        reader.onerror = () => showError(t('errReadFail', { name: file.name }));
         reader.readAsText(file);
       });
     }
@@ -1216,7 +1400,14 @@
       }
     });
 
+    // Language switch
+    $('#langSwitch').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-lang]');
+      if (btn) setLang(btn.dataset.lang);
+    });
+
     // Init
+    applyStaticI18n();
     initMap();
     window.addEventListener('resize', () => {
       if (map) map.invalidateSize();
