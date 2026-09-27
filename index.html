@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GPX 跑步路線分析</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface2: #243044;
+      --border: #2d3a4f;
+      --text: #e8eef5;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --green: #22c55e;
+      --orange: #f59e0b;
+      --red: #ef4444;
+      --hr-low: #22c55e;
+      --hr-mid: #f59e0b;
+      --hr-high: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    header h1 span { color: var(--accent); }
+    .upload-zone {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 0.5rem 0.95rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-sm {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      border-radius: 6px;
+    }
+    #fileInput { display: none; }
+    main {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0;
+      max-width: 1500px;
+      margin: 0 auto;
+    }
+    @media (min-width: 960px) {
+      main { grid-template-columns: 1fr 400px; }
+    }
+    #map {
+      height: 50vh;
+      min-height: 300px;
+      background: var(--surface);
+      z-index: 1;
+    }
+    @media (min-width: 960px) {
+      #map { height: calc(100vh - 58px); min-height: 480px; }
+    }
+    .sidebar {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      max-height: calc(100vh - 58px);
+      padding: 0.85rem;
+    }
+    .panel {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem;
+      margin-bottom: 0.85rem;
+    }
+    .panel h2 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 0.65rem;
+      font-weight: 600;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.55rem;
+    }
+    .stat {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+    }
+    .stat-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-bottom: 0.1rem;
+    }
+    .stat-value {
+      font-size: 1.05rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-value small {
+      font-size: 0.7rem;
+      font-weight: 400;
+      color: var(--muted);
+    }
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1.2rem;
+      color: var(--muted);
+    }
+    .empty-state p { font-size: 0.9rem; margin-bottom: 0.4rem; }
+    .empty-state .hint { font-size: 0.78rem; opacity: 0.75; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 500;
+      padding: 0.35rem 0.3rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.4rem 0.3rem;
+      border-bottom: 1px solid rgba(45, 58, 79, 0.5);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    tr:hover td { background: rgba(59, 130, 246, 0.08); }
+    tr.active td { background: rgba(59, 130, 246, 0.15); }
+    .km-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0 4px;
+    }
+    .hr-bar {
+      display: flex;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 0.3rem;
+      background: var(--bg);
+    }
+    .hr-bar span { height: 100%; }
+    .hr-legend {
+      display: flex;
+      gap: 0.65rem;
+      margin-top: 0.4rem;
+      font-size: 0.68rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .hr-legend i {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      margin-right: 0.2rem;
+      vertical-align: middle;
+    }
+    .chart-wrap {
+      height: 110px;
+      margin-top: 0.4rem;
+      position: relative;
+    }
+    canvas { width: 100% !important; height: 100% !important; }
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.55rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .toggle input { accent-color: var(--accent); }
+    .leaflet-popup-content { font-size: 0.82rem; margin: 0.45rem 0.65rem; }
+    .popup-title { font-weight: 600; margin-bottom: 0.2rem; }
+    .popup-row { color: #555; font-size: 0.78rem; }
+    .error-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--red);
+      color: #fca5a5;
+      padding: 0.6rem 0.85rem;
+      border-radius: 8px;
+      margin-bottom: 0.85rem;
+      font-size: 0.8rem;
+      display: none;
+    }
+    .split-pace-fast { color: var(--green); }
+    .split-pace-slow { color: var(--orange); }
+
+    /* Run list */
+    .run-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .run-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .run-item:hover { border-color: var(--border); }
+    .run-item.active { border-color: var(--accent); background: rgba(59,130,246,0.1); }
+    .run-item.hidden-run { opacity: 0.45; }
+    .run-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+    .run-info { flex: 1; min-width: 0; }
+    .run-name {
+      font-size: 0.8rem;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .run-meta {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 0.1rem;
+    }
+    .run-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0.2rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      line-height: 1;
+    }
+    .icon-btn:hover { color: var(--text); background: var(--surface2); }
+
+    /* Compare table */
+    .compare-wrap { overflow-x: auto; }
+    .compare-table th.color-dot::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+      background: var(--dot-color, #888);
+    }
+    .best { color: var(--green); font-weight: 600; }
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 0.65rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+    .tab {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 0.3rem 0.65rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .tab:hover { color: var(--text); background: var(--bg); }
+    .tab.active {
+      color: var(--text);
+      background: var(--accent);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏃 <span>GPX</span> 跑步路線分析</h1>
+    <div class="upload-zone">
+      <label class="btn" for="fileInput">＋ 匯入 GPX</label>
+      <input type="file" id="fileInput" accept=".gpx,application/gpx+xml,text/xml" multiple />
+      <button class="btn btn-secondary" id="clearBtn" disabled>全部清除</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="map"></div>
+    <aside class="sidebar">
+      <div class="error-banner" id="errorBanner"></div>
+
+      <div id="emptyState" class="empty-state">
+        <p>匯入一個或多個 GPX 開始分析</p>
+        <p class="hint">可一次選多個檔，疊喺同一地圖比較<br>支援 Apple Watch / WorkoutGPX / HealthFit</p>
+      </div>
+
+      <div id="content" style="display:none">
+        <!-- Loaded runs -->
+        <div class="panel">
+          <h2>已載入路線 <span id="runCount" style="color:var(--text);font-weight:600"></span></h2>
+          <div class="run-list" id="runList"></div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="detail">詳情</button>
+          <button class="tab" data-tab="compare">比較</button>
+        </div>
+
+        <!-- Detail tab (selected run) -->
+        <div class="tab-panel active" id="tab-detail">
+          <div class="panel">
+            <h2>總覽 <span id="detailName" style="text-transform:none;letter-spacing:0;color:var(--text);font-weight:500"></span></h2>
+            <div class="stats-grid" id="summaryStats"></div>
+          </div>
+          <div class="panel">
+            <h2>心率分佈</h2>
+            <div class="hr-bar" id="hrBar"></div>
+            <div class="hr-legend" id="hrLegend"></div>
+            <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <h2>每公里分段</h2>
+            <div class="controls">
+              <label class="toggle"><input type="checkbox" id="showMarkers" checked /> 公里標記</label>
+              <label class="toggle"><input type="checkbox" id="showTracks" checked /> 路線</label>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th>公里</th>
+                    <th>到達</th>
+                    <th>配速</th>
+                    <th>平均心率</th>
+                    <th>爬升</th>
+                  </tr>
+                </thead>
+                <tbody id="splitsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compare tab -->
+        <div class="tab-panel" id="tab-compare">
+          <div class="panel">
+            <h2>總覽比較</h2>
+            <div class="compare-wrap">
+              <table class="compare-table" id="compareSummary">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>每公里配速比較</h2>
+            <div class="compare-wrap">
+              <table class="compare-table" id="compareSplits">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>每公里心率比較</h2>
+            <div class="compare-wrap">
+              <table class="compare-table" id="compareHR">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script>
+    // ========== Colors ==========
+    const RUN_COLORS = [
+      '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7',
+      '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'
+    ];
+
+    // ========== Utilities ==========
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+    const fmt = {
+      time(sec) {
+        if (sec == null || isNaN(sec)) return '—';
+        sec = Math.round(sec);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        return `${m}:${String(s).padStart(2,'0')}`;
+      },
+      pace(secPerKm) {
+        if (secPerKm == null || !isFinite(secPerKm) || secPerKm <= 0) return '—';
+        let total = Math.round(secPerKm);
+        let m = Math.floor(total / 60);
+        let s = total % 60;
+        if (s >= 60) { m += 1; s -= 60; }
+        return `${m}:${String(s).padStart(2,'0')}/km`;
+      },
+      dist(m) {
+        if (m >= 1000) return (m / 1000).toFixed(2) + ' km';
+        return Math.round(m) + ' m';
+      },
+      elev(m) {
+        if (m == null) return '—';
+        return (m >= 0 ? '+' : '') + Math.round(m) + ' m';
+      },
+      hr(v) {
+        if (v == null || isNaN(v)) return '—';
+        return Math.round(v) + ' bpm';
+      },
+      date(d) {
+        if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '—';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      },
+      clock(d) {
+        if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '—';
+        const h = String(d.getHours()).padStart(2, '0');
+        const m = String(d.getMinutes()).padStart(2, '0');
+        return `${h}:${m}`;
+      },
+      datetime(d) {
+        if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '—';
+        return `${fmt.date(d)} ${fmt.clock(d)}`;
+      }
+    };
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = (d) => d * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function shortName(filename) {
+      return filename.replace(/\.gpx$/i, '').replace(/[_-]+/g, ' ').slice(0, 40);
+    }
+
+    // ========== GPX Parser ==========
+    function parseGPX(xmlText) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, 'application/xml');
+      if (doc.querySelector('parsererror')) {
+        throw new Error('GPX 檔案格式錯誤，無法解析');
+      }
+
+      let pts = [...doc.querySelectorAll('trkpt')];
+      if (pts.length === 0) pts = [...doc.querySelectorAll('rtept')];
+      if (pts.length === 0) throw new Error('GPX 入面搵唔到軌跡點 (trkpt)');
+
+      const points = [];
+      for (const el of pts) {
+        const lat = parseFloat(el.getAttribute('lat'));
+        const lon = parseFloat(el.getAttribute('lon'));
+        if (isNaN(lat) || isNaN(lon)) continue;
+
+        const timeEl = el.querySelector('time');
+        const elevEl = el.querySelector('ele');
+        let hr = null;
+        const hrEl =
+          el.querySelector('hr') ||
+          el.querySelector('*[local-name="hr"]') ||
+          el.getElementsByTagNameNS('*', 'hr')[0];
+        if (hrEl && hrEl.textContent) {
+          const v = parseFloat(hrEl.textContent.trim());
+          if (!isNaN(v) && v > 20 && v < 250) hr = v;
+        }
+
+        points.push({
+          lat, lon,
+          ele: elevEl ? parseFloat(elevEl.textContent) : null,
+          time: timeEl ? new Date(timeEl.textContent.trim()) : null,
+          hr
+        });
+      }
+
+      if (points.length < 2) throw new Error('軌跡點太少，無法分析');
+
+      let dist = 0;
+      points[0].dist = 0;
+      points[0].dt = 0;
+      for (let i = 1; i < points.length; i++) {
+        dist += haversine(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
+        points[i].dist = dist;
+        if (points[i].time && points[0].time) {
+          points[i].dt = (points[i].time - points[0].time) / 1000;
+        } else {
+          points[i].dt = null;
+        }
+      }
+      return points;
+    }
+
+    function computeSplits(points, intervalM = 1000) {
+      const totalDist = points[points.length - 1].dist;
+      const splits = [];
+      let nextKm = intervalM;
+      let startIdx = 0;
+      let startDist = 0;
+      let startCumDt = 0;
+      let elevStart = points[0].ele;
+
+      for (let i = 1; i < points.length; i++) {
+        while (points[i].dist >= nextKm && nextKm <= totalDist + 0.5) {
+          const prev = points[i - 1];
+          const curr = points[i];
+          const segDist = curr.dist - prev.dist;
+          const ratio = segDist > 0 ? (nextKm - prev.dist) / segDist : 0;
+          const lat = prev.lat + (curr.lat - prev.lat) * ratio;
+          const lon = prev.lon + (curr.lon - prev.lon) * ratio;
+          const ele = (prev.ele != null && curr.ele != null)
+            ? prev.ele + (curr.ele - prev.ele) * ratio
+            : (curr.ele ?? prev.ele);
+
+          let cumDt = null;
+          let t = null;
+          if (prev.dt != null && curr.dt != null) {
+            cumDt = prev.dt + (curr.dt - prev.dt) * ratio;
+          }
+          if (prev.time && curr.time) {
+            t = new Date(prev.time.getTime() + (curr.time - prev.time) * ratio);
+            if (cumDt == null && points[0].time) {
+              cumDt = (t - points[0].time) / 1000;
+            }
+          }
+
+          const splitDuration = (cumDt != null) ? (cumDt - startCumDt) : null;
+          const hrs = [];
+          for (let j = startIdx; j <= i; j++) {
+            if (points[j].hr != null) hrs.push(points[j].hr);
+          }
+          const avgHr = hrs.length ? hrs.reduce((a, b) => a + b, 0) / hrs.length : null;
+          const elevGain = (ele != null && elevStart != null) ? (ele - elevStart) : null;
+          const splitDist = nextKm - startDist;
+          const pace = (splitDuration != null && splitDist > 0)
+            ? (splitDuration / splitDist) * 1000 : null;
+
+          splits.push({
+            km: nextKm / 1000,
+            lat, lon, ele,
+            time: t,
+            duration: splitDuration,
+            cumDuration: cumDt,
+            pace,
+            avgHr,
+            elevDelta: elevGain,
+            startIdx, endIdx: i
+          });
+
+          startIdx = i;
+          startDist = nextKm;
+          if (cumDt != null) startCumDt = cumDt;
+          elevStart = ele;
+          nextKm += intervalM;
+        }
+      }
+
+      const remain = totalDist - startDist;
+      if (remain > 50) {
+        const last = points[points.length - 1];
+        const hrs = [];
+        for (let j = startIdx; j < points.length; j++) {
+          if (points[j].hr != null) hrs.push(points[j].hr);
+        }
+        const avgHr = hrs.length ? hrs.reduce((a, b) => a + b, 0) / hrs.length : null;
+        let cumDt = last.dt;
+        if (cumDt == null && last.time && points[0].time) {
+          cumDt = (last.time - points[0].time) / 1000;
+        }
+        const splitDuration = (cumDt != null) ? (cumDt - startCumDt) : null;
+        const elevGain = (last.ele != null && elevStart != null) ? (last.ele - elevStart) : null;
+        const pace = (splitDuration != null && remain > 0)
+          ? (splitDuration / remain) * 1000 : null;
+        splits.push({
+          km: totalDist / 1000,
+          lat: last.lat, lon: last.lon, ele: last.ele,
+          time: last.time,
+          duration: splitDuration,
+          cumDuration: cumDt,
+          pace, avgHr,
+          elevDelta: elevGain,
+          startIdx, endIdx: points.length - 1,
+          partial: true
+        });
+      }
+      return splits;
+    }
+
+    function summarize(points) {
+      const last = points[points.length - 1];
+      const dist = last.dist;
+      let duration = null;
+      if (last.dt != null) duration = last.dt;
+      else if (points[0].time && last.time) duration = (last.time - points[0].time) / 1000;
+
+      const startTime = points[0].time || null;
+      const endTime = last.time || null;
+
+      const hrs = points.filter(p => p.hr != null).map(p => p.hr);
+      const avgHr = hrs.length ? hrs.reduce((a, b) => a + b, 0) / hrs.length : null;
+      const maxHr = hrs.length ? Math.max(...hrs) : null;
+      const minHr = hrs.length ? Math.min(...hrs) : null;
+
+      let elevGain = 0, elevLoss = 0;
+      for (let i = 1; i < points.length; i++) {
+        if (points[i].ele != null && points[i-1].ele != null) {
+          const d = points[i].ele - points[i-1].ele;
+          if (d > 0) elevGain += d;
+          else elevLoss += -d;
+        }
+      }
+      const pace = (duration != null && dist > 0) ? (duration / dist) * 1000 : null;
+      return {
+        dist, duration, startTime, endTime,
+        avgHr, maxHr, minHr, elevGain, elevLoss, pace,
+        pointCount: points.length, hasHr: hrs.length > 0
+      };
+    }
+
+    // ========== State ==========
+    let runs = []; // { id, name, color, points, splits, summary, visible, layer, markersLayer }
+    let selectedId = null;
+    let nextColorIdx = 0;
+    let map, allBounds = null;
+
+    // ========== Map ==========
+    function initMap() {
+      map = L.map('map', { zoomControl: true }).setView([22.3, 114.17], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap',
+        maxZoom: 19
+      }).addTo(map);
+    }
+
+    function rebuildMapLayers() {
+      // Remove old layers
+      runs.forEach(r => {
+        if (r.layer) map.removeLayer(r.layer);
+        if (r.markersLayer) map.removeLayer(r.markersLayer);
+      });
+
+      allBounds = null;
+      const showTracks = $('#showTracks')?.checked !== false;
+      const showMarkers = $('#showMarkers')?.checked !== false;
+
+      runs.forEach(run => {
+        if (!run.visible) return;
+
+        const latlngs = run.points.map(p => [p.lat, p.lon]);
+        const poly = L.polyline(latlngs, {
+          color: run.color,
+          weight: run.id === selectedId ? 5 : 3,
+          opacity: run.id === selectedId ? 0.95 : 0.65,
+          lineJoin: 'round'
+        });
+        run.layer = L.layerGroup([poly]);
+        if (showTracks) run.layer.addTo(map);
+
+        // Start / end
+        const start = L.circleMarker([run.points[0].lat, run.points[0].lon], {
+          radius: 6, color: run.color, fillColor: '#22c55e', fillOpacity: 1, weight: 2
+        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">起點</div>`);
+        const end = L.circleMarker([run.points[run.points.length-1].lat, run.points[run.points.length-1].lon], {
+          radius: 6, color: run.color, fillColor: '#ef4444', fillOpacity: 1, weight: 2
+        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">終點</div>`);
+
+        const markers = [start, end];
+
+        // KM markers only for selected run (avoid clutter)
+        if (run.id === selectedId) {
+          run.splits.forEach((s) => {
+            if (s.partial) return;
+            const label = Math.round(s.km);
+            const icon = L.divIcon({
+              className: '',
+              html: `<div style="
+                background:${run.color};color:#fff;width:24px;height:24px;border-radius:50%;
+                display:flex;align-items:center;justify-content:center;
+                font-size:10px;font-weight:700;border:2px solid #fff;
+                box-shadow:0 1px 4px rgba(0,0,0,.4);">${label}</div>`,
+              iconSize: [24, 24],
+              iconAnchor: [12, 12]
+            });
+            const m = L.marker([s.lat, s.lon], { icon });
+            m.bindPopup(`
+              <div class="popup-title">${run.name} · 第 ${label} 公里</div>
+              <div class="popup-row">到達：${fmt.time(s.cumDuration)}</div>
+              <div class="popup-row">本段：${fmt.time(s.duration)}（${fmt.pace(s.pace)}）</div>
+              <div class="popup-row">平均心率：${fmt.hr(s.avgHr)}</div>
+              <div class="popup-row">海拔變化：${fmt.elev(s.elevDelta)}</div>
+            `);
+            markers.push(m);
+          });
+        }
+
+        run.markersLayer = L.layerGroup(markers);
+        if (showMarkers) run.markersLayer.addTo(map);
+
+        const b = poly.getBounds();
+        allBounds = allBounds ? allBounds.extend(b) : b;
+      });
+
+      if (allBounds && allBounds.isValid()) {
+        map.fitBounds(allBounds, { padding: [30, 30] });
+      }
+    }
+
+    // ========== UI ==========
+    function showError(msg) {
+      const el = $('#errorBanner');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    function renderRunList() {
+      const list = $('#runList');
+      $('#runCount').textContent = `(${runs.length})`;
+      list.innerHTML = runs.map(r => `
+        <div class="run-item ${r.id === selectedId ? 'active' : ''} ${r.visible ? '' : 'hidden-run'}" data-id="${r.id}">
+          <div class="run-color" style="background:${r.color}"></div>
+          <div class="run-info">
+            <div class="run-name">${r.name}</div>
+            <div class="run-meta">${fmt.date(r.summary.startTime)} · ${fmt.dist(r.summary.dist)} · ${fmt.time(r.summary.duration)}</div>
+          </div>
+          <div class="run-actions">
+            <button class="icon-btn" data-action="toggle" title="顯示/隱藏">${r.visible ? '👁' : '👁‍🗨'}</button>
+            <button class="icon-btn" data-action="remove" title="移除">✕</button>
+          </div>
+        </div>
+      `).join('');
+
+      list.querySelectorAll('.run-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const action = e.target.closest('[data-action]')?.dataset.action;
+          const id = el.dataset.id;
+          if (action === 'toggle') {
+            const run = runs.find(r => r.id === id);
+            if (run) { run.visible = !run.visible; rebuildMapLayers(); renderRunList(); }
+            e.stopPropagation();
+          } else if (action === 'remove') {
+            removeRun(id);
+            e.stopPropagation();
+          } else {
+            selectRun(id);
+          }
+        });
+      });
+    }
+
+    function renderSummary(sum) {
+      $('#summaryStats').innerHTML = `
+        <div class="stat"><div class="stat-label">日期</div><div class="stat-value" style="font-size:0.95rem">${fmt.date(sum.startTime)}</div></div>
+        <div class="stat"><div class="stat-label">開始時間</div><div class="stat-value" style="font-size:0.95rem">${fmt.clock(sum.startTime)}</div></div>
+        <div class="stat"><div class="stat-label">總距離</div><div class="stat-value">${fmt.dist(sum.dist)}</div></div>
+        <div class="stat"><div class="stat-label">經過時間</div><div class="stat-value">${fmt.time(sum.duration)}</div></div>
+        <div class="stat"><div class="stat-label">平均配速</div><div class="stat-value">${fmt.pace(sum.pace)}</div></div>
+        <div class="stat"><div class="stat-label">軌跡點</div><div class="stat-value">${sum.pointCount.toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">平均心率</div><div class="stat-value">${fmt.hr(sum.avgHr)}</div></div>
+        <div class="stat"><div class="stat-label">最高心率</div><div class="stat-value">${fmt.hr(sum.maxHr)}</div></div>
+        <div class="stat"><div class="stat-label">爬升</div><div class="stat-value">${Math.round(sum.elevGain)} <small>m</small></div></div>
+        <div class="stat"><div class="stat-label">下降</div><div class="stat-value">${Math.round(sum.elevLoss)} <small>m</small></div></div>
+      `;
+    }
+
+    function renderHR(points) {
+      const hrs = points.filter(p => p.hr != null).map(p => p.hr);
+      const bar = $('#hrBar');
+      const legend = $('#hrLegend');
+      if (!hrs.length) {
+        bar.innerHTML = '';
+        legend.innerHTML = '<span>呢個 GPX 冇心率數據</span>';
+        drawHRChart([]);
+        return;
+      }
+      let low = 0, mid = 0, high = 0;
+      hrs.forEach(h => {
+        if (h < 140) low++;
+        else if (h < 165) mid++;
+        else high++;
+      });
+      const total = hrs.length;
+      bar.innerHTML = `
+        <span style="width:${(low/total)*100}%;background:var(--hr-low)"></span>
+        <span style="width:${(mid/total)*100}%;background:var(--hr-mid)"></span>
+        <span style="width:${(high/total)*100}%;background:var(--hr-high)"></span>
+      `;
+      legend.innerHTML = `
+        <span><i style="background:var(--hr-low)"></i>&lt;140 (${Math.round(low/total*100)}%)</span>
+        <span><i style="background:var(--hr-mid)"></i>140–165 (${Math.round(mid/total*100)}%)</span>
+        <span><i style="background:var(--hr-high)"></i>&gt;165 (${Math.round(high/total*100)}%)</span>
+      `;
+      drawHRChart(points);
+    }
+
+    function drawHRChart(points) {
+      const canvas = $('#hrChart');
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const withHr = points.filter(p => p.hr != null && p.dist != null);
+      if (withHr.length < 2) {
+        ctx.fillStyle = '#8b9cb3';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('無心率數據', W / 2, H / 2);
+        return;
+      }
+
+      const minHr = Math.min(...withHr.map(p => p.hr)) - 5;
+      const maxHr = Math.max(...withHr.map(p => p.hr)) + 5;
+      const maxDist = withHr[withHr.length - 1].dist;
+      const pad = { t: 8, b: 18, l: 32, r: 8 };
+      const plotW = W - pad.l - pad.r;
+      const plotH = H - pad.t - pad.b;
+
+      ctx.strokeStyle = 'rgba(45,58,79,0.8)';
+      ctx.lineWidth = 1;
+      ctx.fillStyle = '#8b9cb3';
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 3; i++) {
+        const y = pad.t + plotH * (1 - i / 3);
+        const val = minHr + (maxHr - minHr) * (i / 3);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(W - pad.r, y);
+        ctx.stroke();
+        ctx.fillText(Math.round(val), pad.l - 4, y + 3);
+      }
+
+      ctx.beginPath();
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 1.5;
+      withHr.forEach((p, i) => {
+        const x = pad.l + (p.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (p.hr - minHr) / (maxHr - minHr));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.fillText('0', pad.l, H - 4);
+      ctx.fillText((maxDist / 1000).toFixed(1) + 'km', W - pad.r, H - 4);
+    }
+
+    function renderSplits(splits) {
+      const tbody = $('#splitsBody');
+      const paces = splits.filter(s => s.pace != null).map(s => s.pace);
+      const avgPace = paces.length ? paces.reduce((a, b) => a + b, 0) / paces.length : null;
+
+      tbody.innerHTML = splits.map((s, idx) => {
+        const label = s.partial ? s.km.toFixed(2) : Math.round(s.km);
+        const paceClass = (avgPace && s.pace != null)
+          ? (s.pace < avgPace * 0.97 ? 'split-pace-fast' : (s.pace > avgPace * 1.03 ? 'split-pace-slow' : ''))
+          : '';
+        return `<tr data-idx="${idx}">
+          <td><span class="km-badge">${label}</span></td>
+          <td>${fmt.time(s.cumDuration)}</td>
+          <td class="${paceClass}">${fmt.pace(s.pace)}</td>
+          <td>${fmt.hr(s.avgHr)}</td>
+          <td>${fmt.elev(s.elevDelta)}</td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('tr').forEach(tr => {
+        tr.addEventListener('click', () => {
+          tbody.querySelectorAll('tr').forEach(r => r.classList.remove('active'));
+          tr.classList.add('active');
+          const idx = parseInt(tr.dataset.idx, 10);
+          const run = runs.find(r => r.id === selectedId);
+          if (run && run.splits[idx]) {
+            const s = run.splits[idx];
+            map.setView([s.lat, s.lon], Math.max(map.getZoom(), 16), { animate: true });
+          }
+        });
+      });
+    }
+
+    function renderCompare() {
+      const visible = runs.filter(r => r.visible);
+      if (visible.length === 0) return;
+
+      // Summary comparison
+      const sumTable = $('#compareSummary');
+      const metrics = [
+        { key: 'startTime', label: '日期', fmt: (r) => fmt.date(r.summary.startTime), best: null },
+        { key: 'startClock', label: '開始', fmt: (r) => fmt.clock(r.summary.startTime), best: null },
+        { key: 'dist', label: '距離', fmt: (r) => fmt.dist(r.summary.dist), best: 'max' },
+        { key: 'duration', label: '經過時間', fmt: (r) => fmt.time(r.summary.duration), best: 'min' },
+        { key: 'pace', label: '平均配速', fmt: (r) => fmt.pace(r.summary.pace), best: 'min' },
+        { key: 'avgHr', label: '平均心率', fmt: (r) => fmt.hr(r.summary.avgHr), best: null },
+        { key: 'maxHr', label: '最高心率', fmt: (r) => fmt.hr(r.summary.maxHr), best: null },
+        { key: 'elevGain', label: '爬升', fmt: (r) => Math.round(r.summary.elevGain) + ' m', best: null },
+      ];
+
+      sumTable.querySelector('thead').innerHTML = `<tr>
+        <th></th>
+        ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,12)}</th>`).join('')}
+      </tr>`;
+      sumTable.querySelector('tbody').innerHTML = metrics.map(m => {
+        let bestVal = null;
+        if (m.best === 'min') {
+          bestVal = Math.min(...visible.map(r => r.summary[m.key]).filter(v => v != null));
+        } else if (m.best === 'max') {
+          bestVal = Math.max(...visible.map(r => r.summary[m.key]).filter(v => v != null));
+        }
+        return `<tr>
+          <td>${m.label}</td>
+          ${visible.map(r => {
+            const v = r.summary[m.key];
+            const isBest = m.best && v != null && v === bestVal;
+            return `<td class="${isBest ? 'best' : ''}">${m.fmt(r)}</td>`;
+          }).join('')}
+        </tr>`;
+      }).join('');
+
+      // Pace splits comparison
+      const maxKm = Math.max(...visible.map(r =>
+        r.splits.filter(s => !s.partial).length
+      ));
+      const paceTable = $('#compareSplits');
+      paceTable.querySelector('thead').innerHTML = `<tr>
+        <th>公里</th>
+        ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,10)}</th>`).join('')}
+      </tr>`;
+      let paceRows = '';
+      for (let k = 1; k <= maxKm; k++) {
+        const vals = visible.map(r => {
+          const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+          return s ? s.pace : null;
+        });
+        const best = Math.min(...vals.filter(v => v != null));
+        paceRows += `<tr>
+          <td><span class="km-badge">${k}</span></td>
+          ${vals.map(v => `<td class="${v != null && v === best ? 'best' : ''}">${fmt.pace(v)}</td>`).join('')}
+        </tr>`;
+      }
+      paceTable.querySelector('tbody').innerHTML = paceRows;
+
+      // HR splits comparison
+      const hrTable = $('#compareHR');
+      hrTable.querySelector('thead').innerHTML = `<tr>
+        <th>公里</th>
+        ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,10)}</th>`).join('')}
+      </tr>`;
+      let hrRows = '';
+      for (let k = 1; k <= maxKm; k++) {
+        const vals = visible.map(r => {
+          const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+          return s ? s.avgHr : null;
+        });
+        hrRows += `<tr>
+          <td><span class="km-badge">${k}</span></td>
+          ${vals.map(v => `<td>${fmt.hr(v)}</td>`).join('')}
+        </tr>`;
+      }
+      hrTable.querySelector('tbody').innerHTML = hrRows;
+    }
+
+    function selectRun(id) {
+      selectedId = id;
+      const run = runs.find(r => r.id === id);
+      if (!run) return;
+      $('#detailName').textContent = '· ' + run.name;
+      renderSummary(run.summary);
+      renderHR(run.points);
+      renderSplits(run.splits);
+      renderRunList();
+      rebuildMapLayers();
+    }
+
+    function removeRun(id) {
+      const run = runs.find(r => r.id === id);
+      if (run) {
+        if (run.layer) map.removeLayer(run.layer);
+        if (run.markersLayer) map.removeLayer(run.markersLayer);
+      }
+      runs = runs.filter(r => r.id !== id);
+      if (selectedId === id) {
+        selectedId = runs.length ? runs[runs.length - 1].id : null;
+      }
+      if (runs.length === 0) {
+        $('#content').style.display = 'none';
+        $('#emptyState').style.display = 'block';
+        $('#clearBtn').disabled = true;
+      } else {
+        selectRun(selectedId);
+        renderCompare();
+      }
+      renderRunList();
+      rebuildMapLayers();
+    }
+
+    function addRun(name, points) {
+      const splits = computeSplits(points, 1000);
+      const summary = summarize(points);
+      const id = 'run_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
+      const color = RUN_COLORS[nextColorIdx % RUN_COLORS.length];
+      nextColorIdx++;
+      const run = {
+        id, name: shortName(name), color,
+        points, splits, summary,
+        visible: true,
+        layer: null, markersLayer: null
+      };
+      runs.push(run);
+      selectedId = id;
+
+      $('#emptyState').style.display = 'none';
+      $('#content').style.display = 'block';
+      $('#clearBtn').disabled = false;
+
+      renderRunList();
+      selectRun(id);
+      renderCompare();
+    }
+
+    function clearAll() {
+      runs.forEach(r => {
+        if (r.layer) map.removeLayer(r.layer);
+        if (r.markersLayer) map.removeLayer(r.markersLayer);
+      });
+      runs = [];
+      selectedId = null;
+      nextColorIdx = 0;
+      $('#content').style.display = 'none';
+      $('#emptyState').style.display = 'block';
+      $('#clearBtn').disabled = true;
+      $('#fileInput').value = '';
+    }
+
+    function loadFiles(fileList) {
+      const files = [...fileList].filter(f =>
+        f.name.toLowerCase().endsWith('.gpx') || f.type.includes('xml')
+      );
+      if (!files.length) {
+        showError('請選擇 .gpx 檔案');
+        return;
+      }
+      let loaded = 0;
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const points = parseGPX(reader.result);
+            addRun(file.name, points);
+            loaded++;
+          } catch (err) {
+            showError(`${file.name}: ${err.message}`);
+          }
+        };
+        reader.onerror = () => showError(`讀取 ${file.name} 失敗`);
+        reader.readAsText(file);
+      });
+    }
+
+    // ========== Events ==========
+    $('#fileInput').addEventListener('change', (e) => {
+      if (e.target.files.length) loadFiles(e.target.files);
+      e.target.value = '';
+    });
+    $('#clearBtn').addEventListener('click', clearAll);
+
+    document.body.addEventListener('dragover', (e) => e.preventDefault());
+    document.body.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
+    });
+
+    // Tabs
+    $$('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        $$('.tab').forEach(t => t.classList.remove('active'));
+        $$('.tab-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        $(`#tab-${tab.dataset.tab}`).classList.add('active');
+        if (tab.dataset.tab === 'compare') renderCompare();
+      });
+    });
+
+    // Map toggles
+    document.addEventListener('change', (e) => {
+      if (e.target.id === 'showMarkers' || e.target.id === 'showTracks') {
+        rebuildMapLayers();
+      }
+    });
+
+    // Init
+    initMap();
+    window.addEventListener('resize', () => {
+      if (map) map.invalidateSize();
+      const run = runs.find(r => r.id === selectedId);
+      if (run) drawHRChart(run.points);
+    });
+  </script>
+</body>
+</html>
