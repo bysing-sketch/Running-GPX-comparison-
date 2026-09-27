@@ -388,6 +388,7 @@
             <h2>每公里分段</h2>
             <div class="controls">
               <label class="toggle"><input type="checkbox" id="showMarkers" checked /> 公里標記</label>
+              <label class="toggle"><input type="checkbox" id="showOtherMarkers" checked /> 其他路線標記</label>
               <label class="toggle"><input type="checkbox" id="showTracks" checked /> 路線</label>
             </div>
             <div style="overflow-x:auto">
@@ -720,6 +721,7 @@
       allBounds = null;
       const showTracks = $('#showTracks')?.checked !== false;
       const showMarkers = $('#showMarkers')?.checked !== false;
+      const showOtherMarkers = $('#showOtherMarkers')?.checked !== false;
 
       runs.forEach(run => {
         if (!run.visible) return;
@@ -754,32 +756,55 @@
         run.layer = L.layerGroup([poly, decorator]);
         if (showTracks) run.layer.addTo(map);
 
-        // Start / end
+        // Start / end — selected solid, others semi-transparent
+        const seOpacity = isSelected ? 1 : 0.4;
         const start = L.circleMarker([run.points[0].lat, run.points[0].lon], {
-          radius: 6, color: run.color, fillColor: '#22c55e', fillOpacity: 1, weight: 2
+          radius: isSelected ? 7 : 5,
+          color: run.color,
+          fillColor: '#22c55e',
+          fillOpacity: seOpacity,
+          opacity: seOpacity,
+          weight: 2
         }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">起點</div>`);
         const end = L.circleMarker([run.points[run.points.length-1].lat, run.points[run.points.length-1].lon], {
-          radius: 6, color: run.color, fillColor: '#ef4444', fillOpacity: 1, weight: 2
+          radius: isSelected ? 7 : 5,
+          color: run.color,
+          fillColor: '#ef4444',
+          fillOpacity: seOpacity,
+          opacity: seOpacity,
+          weight: 2
         }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">終點</div>`);
 
         const markers = [start, end];
 
-        // KM markers only for selected run (avoid clutter)
-        if (run.id === selectedId) {
+        // KM markers for all runs; selected solid, others semi-transparent
+        // Non-selected markers can be hidden via showOtherMarkers toggle
+        if (isSelected || showOtherMarkers) {
+          const opacity = isSelected ? 1 : 0.35;
+          const size = isSelected ? 26 : 20;
+          const fontSize = isSelected ? 11 : 9;
+          const border = isSelected ? '2px solid #fff' : '1px solid rgba(255,255,255,0.5)';
+          const shadow = isSelected
+            ? '0 1px 5px rgba(0,0,0,.5)'
+            : '0 1px 2px rgba(0,0,0,.25)';
+          const zIndex = isSelected ? 600 : 400;
+
           run.splits.forEach((s) => {
             if (s.partial) return;
             const label = Math.round(s.km);
             const icon = L.divIcon({
               className: '',
               html: `<div style="
-                background:${run.color};color:#fff;width:24px;height:24px;border-radius:50%;
+                background:${run.color};color:#fff;
+                width:${size}px;height:${size}px;border-radius:50%;
                 display:flex;align-items:center;justify-content:center;
-                font-size:10px;font-weight:700;border:2px solid #fff;
-                box-shadow:0 1px 4px rgba(0,0,0,.4);">${label}</div>`,
-              iconSize: [24, 24],
-              iconAnchor: [12, 12]
+                font-size:${fontSize}px;font-weight:700;
+                border:${border};box-shadow:${shadow};
+                opacity:${opacity};">${label}</div>`,
+              iconSize: [size, size],
+              iconAnchor: [size / 2, size / 2]
             });
-            const m = L.marker([s.lat, s.lon], { icon });
+            const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: zIndex });
             m.bindPopup(`
               <div class="popup-title">${run.name} · 第 ${label} 公里</div>
               <div class="popup-row">到達：${fmt.time(s.cumDuration)}</div>
@@ -1186,7 +1211,7 @@
 
     // Map toggles
     document.addEventListener('change', (e) => {
-      if (e.target.id === 'showMarkers' || e.target.id === 'showTracks') {
+      if (e.target.id === 'showMarkers' || e.target.id === 'showOtherMarkers' || e.target.id === 'showTracks') {
         rebuildMapLayers();
       }
     });
