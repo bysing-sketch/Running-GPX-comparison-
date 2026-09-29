@@ -8,7 +8,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
   <style>
-    :root {
+    :root, [data-theme="dark"] {
       --bg: #0f1419;
       --surface: #1a2332;
       --surface2: #243044;
@@ -23,6 +23,26 @@
       --hr-low: #22c55e;
       --hr-mid: #f59e0b;
       --hr-high: #ef4444;
+      --chart-grid: rgba(45,58,79,0.8);
+      --popup-text: #555;
+    }
+    [data-theme="light"] {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface2: #f0f3f7;
+      --border: #d0d7e2;
+      --text: #1a2332;
+      --muted: #5a6a7e;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --green: #16a34a;
+      --orange: #d97706;
+      --red: #dc2626;
+      --hr-low: #16a34a;
+      --hr-mid: #d97706;
+      --hr-high: #dc2626;
+      --chart-grid: rgba(208,215,226,0.9);
+      --popup-text: #333;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -220,7 +240,37 @@
       margin-top: 0.4rem;
       position: relative;
     }
+    .chart-wrap.overlay {
+      height: 160px;
+    }
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.75rem;
+      margin-top: 0.45rem;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .chart-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .chart-legend i {
+      display: inline-block;
+      width: 14px;
+      height: 3px;
+      border-radius: 1px;
+    }
     canvas { width: 100% !important; height: 100% !important; }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .panel-head h2 { margin-bottom: 0; }
     .controls {
       display: flex;
       gap: 0.5rem;
@@ -237,9 +287,9 @@
       cursor: pointer;
     }
     .toggle input { accent-color: var(--accent); }
-    .leaflet-popup-content { font-size: 0.82rem; margin: 0.45rem 0.65rem; }
+    .leaflet-popup-content { font-size: 0.82rem; margin: 0.45rem 0.65rem; color: var(--popup-text); }
     .popup-title { font-weight: 600; margin-bottom: 0.2rem; }
-    .popup-row { color: #555; font-size: 0.78rem; }
+    .popup-row { color: var(--popup-text); font-size: 0.78rem; }
     .error-banner {
       background: rgba(239, 68, 68, 0.15);
       border: 1px solid var(--red);
@@ -363,6 +413,21 @@
       color: var(--text);
       background: rgba(59,130,246,0.15);
     }
+    .theme-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1rem;
+      width: 34px;
+      height: 32px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .theme-btn:hover { border-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -373,6 +438,7 @@
         <button type="button" data-lang="zh" class="active">中</button>
         <button type="button" data-lang="en">EN</button>
       </div>
+      <button type="button" class="theme-btn" id="themeBtn" title="Theme">🌙</button>
       <label class="btn" for="fileInput" data-i18n="importBtn">＋ 匯入 GPX</label>
       <input type="file" id="fileInput" accept=".gpx,application/gpx+xml,text/xml" multiple />
       <button class="btn btn-secondary" id="clearBtn" disabled data-i18n="clearAll">全部清除</button>
@@ -440,13 +506,26 @@
         <!-- Compare tab -->
         <div class="tab-panel" id="tab-compare">
           <div class="panel">
-            <h2 data-i18n="compareOverview">總覽比較</h2>
+            <div class="panel-head">
+              <h2 data-i18n="compareOverview">總覽比較</h2>
+              <button type="button" class="btn btn-secondary btn-sm" id="exportCsvBtn" data-i18n="exportCsv">匯出 CSV</button>
+            </div>
             <div class="compare-wrap">
               <table class="compare-table" id="compareSummary">
                 <thead></thead>
                 <tbody></tbody>
               </table>
             </div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="overlayPace">配速 vs 距離</h2>
+            <div class="chart-wrap overlay"><canvas id="paceOverlayChart"></canvas></div>
+            <div class="chart-legend" id="paceOverlayLegend"></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="overlayHr">心率 vs 距離</h2>
+            <div class="chart-wrap overlay"><canvas id="hrOverlayChart"></canvas></div>
+            <div class="chart-legend" id="hrOverlayLegend"></div>
           </div>
           <div class="panel">
             <h2 data-i18n="comparePace">每公里配速比較</h2>
@@ -525,6 +604,11 @@
         errSelectGpx: '請選擇 .gpx 檔案',
         errReadFail: '讀取 {name} 失敗',
         pageTitle: 'GPX 跑步路線分析',
+        exportCsv: '匯出 CSV',
+        overlayPace: '配速 vs 距離',
+        overlayHr: '心率 vs 距離',
+        themeToggle: '切換主題',
+        noOverlayData: '冇足夠數據可繪圖',
       },
       en: {
         appTitle: 'Run Route Analyzer',
@@ -577,6 +661,11 @@
         errSelectGpx: 'Please select a .gpx file',
         errReadFail: 'Failed to read {name}',
         pageTitle: 'GPX Run Route Analyzer',
+        exportCsv: 'Export CSV',
+        overlayPace: 'Pace vs distance',
+        overlayHr: 'HR vs distance',
+        themeToggle: 'Toggle theme',
+        noOverlayData: 'Not enough data to chart',
       }
     };
 
@@ -625,6 +714,35 @@
         }
         renderCompare();
       }
+    }
+
+    // ========== Theme ==========
+    let theme = localStorage.getItem('gpx-theme') || 'dark';
+    if (theme !== 'light' && theme !== 'dark') theme = 'dark';
+
+    function applyTheme() {
+      document.documentElement.setAttribute('data-theme', theme);
+      const btn = $('#themeBtn');
+      if (btn) {
+        btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+        btn.title = t('themeToggle');
+      }
+      // Redraw charts with new colors
+      if (typeof runs !== 'undefined' && runs.length) {
+        const run = runs.find(r => r.id === selectedId);
+        if (run) {
+          renderHR(run.points);
+        }
+        if ($('#tab-compare')?.classList.contains('active')) {
+          renderOverlayCharts();
+        }
+      }
+    }
+
+    function toggleTheme() {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('gpx-theme', theme);
+      applyTheme();
     }
 
     // ========== Colors ==========
@@ -1043,7 +1161,12 @@
           const id = el.dataset.id;
           if (action === 'toggle') {
             const run = runs.find(r => r.id === id);
-            if (run) { run.visible = !run.visible; rebuildMapLayers(); renderRunList(); }
+            if (run) {
+              run.visible = !run.visible;
+              rebuildMapLayers();
+              renderRunList();
+              if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+            }
             e.stopPropagation();
           } else if (action === 'remove') {
             removeRun(id);
@@ -1127,9 +1250,12 @@
       const plotW = W - pad.l - pad.r;
       const plotH = H - pad.t - pad.b;
 
-      ctx.strokeStyle = 'rgba(45,58,79,0.8)';
+      const styles = getComputedStyle(document.documentElement);
+      const gridColor = styles.getPropertyValue('--chart-grid').trim() || 'rgba(45,58,79,0.8)';
+      const mutedColor = styles.getPropertyValue('--muted').trim() || '#8b9cb3';
+      ctx.strokeStyle = gridColor;
       ctx.lineWidth = 1;
-      ctx.fillStyle = '#8b9cb3';
+      ctx.fillStyle = mutedColor;
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'right';
       for (let i = 0; i <= 3; i++) {
@@ -1143,7 +1269,7 @@
       }
 
       ctx.beginPath();
-      ctx.strokeStyle = '#ef4444';
+      ctx.strokeStyle = styles.getPropertyValue('--red').trim() || '#ef4444';
       ctx.lineWidth = 1.5;
       withHr.forEach((p, i) => {
         const x = pad.l + (p.dist / maxDist) * plotW;
@@ -1156,6 +1282,213 @@
       ctx.textAlign = 'center';
       ctx.fillText('0', pad.l, H - 4);
       ctx.fillText((maxDist / 1000).toFixed(1) + 'km', W - pad.r, H - 4);
+    }
+
+    /** Sample series along distance for overlay charts */
+    function sampleSeries(run, mode, stepM = 50) {
+      const pts = run.points;
+      if (!pts.length) return [];
+      const total = pts[pts.length - 1].dist;
+      const out = [];
+      for (let d = 0; d <= total; d += stepM) {
+        // find segment
+        let i = 1;
+        while (i < pts.length && pts[i].dist < d) i++;
+        if (i >= pts.length) i = pts.length - 1;
+        const prev = pts[i - 1] || pts[0];
+        const curr = pts[i];
+        const seg = curr.dist - prev.dist;
+        const ratio = seg > 0 ? (d - prev.dist) / seg : 0;
+        let val = null;
+        if (mode === 'hr') {
+          if (prev.hr != null && curr.hr != null) val = prev.hr + (curr.hr - prev.hr) * ratio;
+          else val = curr.hr ?? prev.hr;
+        } else if (mode === 'pace') {
+          // instantaneous pace from nearby points (±30s or ±100m window)
+          const win = 80; // meters
+          let j0 = i, j1 = i;
+          while (j0 > 0 && pts[i].dist - pts[j0].dist < win) j0--;
+          while (j1 < pts.length - 1 && pts[j1].dist - pts[i].dist < win) j1++;
+          const dd = pts[j1].dist - pts[j0].dist;
+          const dt0 = pts[j0].dt, dt1 = pts[j1].dt;
+          if (dd > 10 && dt0 != null && dt1 != null && dt1 > dt0) {
+            val = ((dt1 - dt0) / dd) * 1000; // sec/km
+          }
+        }
+        if (val != null && isFinite(val)) out.push({ dist: d, val });
+      }
+      return out;
+    }
+
+    function drawOverlayChart(canvasId, legendId, mode) {
+      const canvas = $('#' + canvasId);
+      const legend = $('#' + legendId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      if (rect.width < 10) return;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const visible = runs.filter(r => r.visible);
+      const series = visible.map(r => ({
+        run: r,
+        data: sampleSeries(r, mode)
+      })).filter(s => s.data.length >= 2);
+
+      const styles = getComputedStyle(document.documentElement);
+      const gridColor = styles.getPropertyValue('--chart-grid').trim() || 'rgba(45,58,79,0.8)';
+      const mutedColor = styles.getPropertyValue('--muted').trim() || '#8b9cb3';
+
+      if (!series.length) {
+        ctx.fillStyle = mutedColor;
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t('noOverlayData'), W / 2, H / 2);
+        if (legend) legend.innerHTML = '';
+        return;
+      }
+
+      let minV = Infinity, maxV = -Infinity, maxDist = 0;
+      series.forEach(s => {
+        s.data.forEach(p => {
+          if (p.val < minV) minV = p.val;
+          if (p.val > maxV) maxV = p.val;
+        });
+        const last = s.data[s.data.length - 1].dist;
+        if (last > maxDist) maxDist = last;
+      });
+      if (mode === 'pace') {
+        // pad pace range; invert-friendly
+        minV = Math.max(120, minV - 15); // not faster than ~2:00/km for scale
+        maxV = maxV + 15;
+      } else {
+        minV = Math.max(40, minV - 5);
+        maxV = maxV + 5;
+      }
+      if (maxV <= minV) { maxV = minV + 1; }
+
+      const pad = { t: 10, b: 20, l: 40, r: 10 };
+      const plotW = W - pad.l - pad.r;
+      const plotH = H - pad.t - pad.b;
+
+      // grid + y labels
+      ctx.strokeStyle = gridColor;
+      ctx.lineWidth = 1;
+      ctx.fillStyle = mutedColor;
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + plotH * (i / 4);
+        // For pace: higher pace (slower) at bottom visually? Use higher value at bottom (normal)
+        const val = maxV - (maxV - minV) * (i / 4);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(W - pad.r, y);
+        ctx.stroke();
+        const label = mode === 'pace'
+          ? fmt.pace(val).replace('/km', '')
+          : String(Math.round(val));
+        ctx.fillText(label, pad.l - 4, y + 3);
+      }
+
+      // x labels
+      ctx.textAlign = 'center';
+      ctx.fillText('0', pad.l, H - 4);
+      ctx.fillText((maxDist / 1000).toFixed(1) + ' km', W - pad.r, H - 4);
+
+      // lines
+      series.forEach(s => {
+        ctx.beginPath();
+        ctx.strokeStyle = s.run.color;
+        ctx.lineWidth = s.run.id === selectedId ? 2.5 : 1.5;
+        ctx.globalAlpha = s.run.id === selectedId ? 1 : 0.75;
+        s.data.forEach((p, i) => {
+          const x = pad.l + (p.dist / maxDist) * plotW;
+          // y: higher value near top for HR; same for pace (slower = higher sec/km = higher on chart)
+          const y = pad.t + plotH * (1 - (p.val - minV) / (maxV - minV));
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      });
+
+      if (legend) {
+        legend.innerHTML = series.map(s =>
+          `<span><i style="background:${s.run.color}"></i>${s.run.name.slice(0, 18)}</span>`
+        ).join('');
+      }
+    }
+
+    function renderOverlayCharts() {
+      drawOverlayChart('paceOverlayChart', 'paceOverlayLegend', 'pace');
+      drawOverlayChart('hrOverlayChart', 'hrOverlayLegend', 'hr');
+    }
+
+    function exportCompareCsv() {
+      const visible = runs.filter(r => r.visible);
+      if (!visible.length) return;
+
+      const rows = [];
+      // Overview section
+      rows.push([t('compareOverview')]);
+      rows.push([t('loadedRoutes'), ...visible.map(r => r.name)]);
+      rows.push([t('date'), ...visible.map(r => fmt.date(r.summary.startTime))]);
+      rows.push([t('start'), ...visible.map(r => fmt.clock(r.summary.startTime))]);
+      rows.push([t('dist'), ...visible.map(r => (r.summary.dist / 1000).toFixed(3))]);
+      rows.push([t('elapsed'), ...visible.map(r => fmt.time(r.summary.duration))]);
+      rows.push([t('avgPace'), ...visible.map(r => fmt.pace(r.summary.pace))]);
+      rows.push([t('avgHr'), ...visible.map(r => r.summary.avgHr != null ? Math.round(r.summary.avgHr) : '')]);
+      rows.push([t('maxHr'), ...visible.map(r => r.summary.maxHr != null ? Math.round(r.summary.maxHr) : '')]);
+      rows.push([t('elevGain'), ...visible.map(r => Math.round(r.summary.elevGain))]);
+      rows.push([]);
+
+      // Pace by km
+      rows.push([t('comparePace')]);
+      rows.push([t('thKm'), ...visible.map(r => r.name)]);
+      const maxKm = Math.max(...visible.map(r => r.splits.filter(s => !s.partial).length), 0);
+      for (let k = 1; k <= maxKm; k++) {
+        rows.push([
+          k,
+          ...visible.map(r => {
+            const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+            return s && s.pace != null ? fmt.pace(s.pace) : '';
+          })
+        ]);
+      }
+      rows.push([]);
+
+      // HR by km
+      rows.push([t('compareHr')]);
+      rows.push([t('thKm'), ...visible.map(r => r.name)]);
+      for (let k = 1; k <= maxKm; k++) {
+        rows.push([
+          k,
+          ...visible.map(r => {
+            const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+            return s && s.avgHr != null ? Math.round(s.avgHr) : '';
+          })
+        ]);
+      }
+
+      const csv = rows.map(row =>
+        row.map(cell => {
+          const s = String(cell ?? '');
+          return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        }).join(',')
+      ).join('\n');
+
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `gpx-compare-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
     }
 
     function renderSplits(splits) {
@@ -1270,6 +1603,7 @@
         </tr>`;
       }
       hrTable.querySelector('tbody').innerHTML = hrRows;
+      renderOverlayCharts();
     }
 
     function selectRun(id) {
@@ -1282,6 +1616,7 @@
       renderSplits(run.splits);
       renderRunList();
       rebuildMapLayers();
+      if ($('#tab-compare')?.classList.contains('active')) renderCompare();
     }
 
     function removeRun(id) {
@@ -1406,13 +1741,21 @@
       if (btn) setLang(btn.dataset.lang);
     });
 
+    // Theme toggle
+    $('#themeBtn').addEventListener('click', toggleTheme);
+
+    // CSV export
+    $('#exportCsvBtn').addEventListener('click', exportCompareCsv);
+
     // Init
+    applyTheme();
     applyStaticI18n();
     initMap();
     window.addEventListener('resize', () => {
       if (map) map.invalidateSize();
       const run = runs.find(r => r.id === selectedId);
       if (run) drawHRChart(run.points);
+      if ($('#tab-compare')?.classList.contains('active')) renderOverlayCharts();
     });
   </script>
 </body>
