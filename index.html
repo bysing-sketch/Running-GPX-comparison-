@@ -480,6 +480,10 @@
             <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
           </div>
           <div class="panel">
+            <h2 data-i18n="elevProfile">海拔剖面</h2>
+            <div class="chart-wrap overlay"><canvas id="elevChart"></canvas></div>
+          </div>
+          <div class="panel">
             <h2 data-i18n="kmSplits">每公里分段</h2>
             <div class="controls">
               <label class="toggle"><input type="checkbox" id="showMarkers" checked /> <span data-i18n="kmMarkers">公里標記</span></label>
@@ -526,6 +530,11 @@
             <h2 data-i18n="overlayHr">心率 vs 距離</h2>
             <div class="chart-wrap overlay"><canvas id="hrOverlayChart"></canvas></div>
             <div class="chart-legend" id="hrOverlayLegend"></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="overlayElev">海拔 vs 距離</h2>
+            <div class="chart-wrap overlay"><canvas id="elevOverlayChart"></canvas></div>
+            <div class="chart-legend" id="elevOverlayLegend"></div>
           </div>
           <div class="panel">
             <h2 data-i18n="comparePace">每公里配速比較</h2>
@@ -609,6 +618,9 @@
         overlayHr: '心率 vs 距離',
         themeToggle: '切換主題',
         noOverlayData: '冇足夠數據可繪圖',
+        elevProfile: '海拔剖面',
+        overlayElev: '海拔 vs 距離',
+        noElevData: '無海拔數據',
         weatherTemp: '平均氣溫',
         weatherHumidity: '平均濕度',
         weatherWind: '平均風速',
@@ -672,6 +684,9 @@
         overlayHr: 'HR vs distance',
         themeToggle: 'Toggle theme',
         noOverlayData: 'Not enough data to chart',
+        elevProfile: 'Elevation profile',
+        overlayElev: 'Elevation vs distance',
+        noElevData: 'No elevation data',
         weatherTemp: 'Avg temp',
         weatherHumidity: 'Avg humidity',
         weatherWind: 'Avg wind',
@@ -721,6 +736,7 @@
         if (run) {
           renderSummary(run.summary);
           renderHR(run.points);
+          drawElevChart(run.points);
           renderSplits(run.splits);
           rebuildMapLayers();
         }
@@ -744,6 +760,7 @@
         const run = runs.find(r => r.id === selectedId);
         if (run) {
           renderHR(run.points);
+          drawElevChart(run.points);
         }
         if ($('#tab-compare')?.classList.contains('active')) {
           renderOverlayCharts();
@@ -1476,6 +1493,9 @@
         if (mode === 'hr') {
           if (prev.hr != null && curr.hr != null) val = prev.hr + (curr.hr - prev.hr) * ratio;
           else val = curr.hr ?? prev.hr;
+        } else if (mode === 'elev') {
+          if (prev.ele != null && curr.ele != null) val = prev.ele + (curr.ele - prev.ele) * ratio;
+          else val = curr.ele ?? prev.ele;
         } else if (mode === 'pace') {
           // instantaneous pace from nearby points (±30s or ±100m window)
           const win = 80; // meters
@@ -1536,10 +1556,15 @@
         if (last > maxDist) maxDist = last;
       });
       if (mode === 'pace') {
-        // pad pace range; invert-friendly
+        // pad pace range
         minV = Math.max(120, minV - 15); // not faster than ~2:00/km for scale
         maxV = maxV + 15;
+      } else if (mode === 'elev') {
+        const padE = Math.max(5, (maxV - minV) * 0.1 || 5);
+        minV -= padE;
+        maxV += padE;
       } else {
+        // HR etc.
         minV = Math.max(40, minV - 5);
         maxV = maxV + 5;
       }
@@ -1565,7 +1590,9 @@
         ctx.stroke();
         const label = mode === 'pace'
           ? fmt.pace(val).replace('/km', '')
-          : String(Math.round(val));
+          : mode === 'elev'
+            ? Math.round(val) + 'm'
+            : String(Math.round(val));
         ctx.fillText(label, pad.l - 4, y + 3);
       }
 
@@ -1601,6 +1628,115 @@
     function renderOverlayCharts() {
       drawOverlayChart('paceOverlayChart', 'paceOverlayLegend', 'pace');
       drawOverlayChart('hrOverlayChart', 'hrOverlayLegend', 'hr');
+      drawOverlayChart('elevOverlayChart', 'elevOverlayLegend', 'elev');
+    }
+
+    function drawElevChart(points) {
+      const canvas = $('#elevChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      if (rect.width < 10) return;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const styles = getComputedStyle(document.documentElement);
+      const gridColor = styles.getPropertyValue('--chart-grid').trim() || 'rgba(45,58,79,0.8)';
+      const mutedColor = styles.getPropertyValue('--muted').trim() || '#8b9cb3';
+      const accent = styles.getPropertyValue('--accent').trim() || '#3b82f6';
+      const green = styles.getPropertyValue('--green').trim() || '#22c55e';
+
+      const withEle = points.filter(p => p.ele != null && p.dist != null);
+      if (withEle.length < 2) {
+        ctx.fillStyle = mutedColor;
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t('noElevData'), W / 2, H / 2);
+        return;
+      }
+
+      let minE = Math.min(...withEle.map(p => p.ele));
+      let maxE = Math.max(...withEle.map(p => p.ele));
+      const padE = Math.max(5, (maxE - minE) * 0.1);
+      minE -= padE;
+      maxE += padE;
+      if (maxE <= minE) maxE = minE + 10;
+      const maxDist = withEle[withEle.length - 1].dist;
+
+      const pad = { t: 10, b: 20, l: 40, r: 10 };
+      const plotW = W - pad.l - pad.r;
+      const plotH = H - pad.t - pad.b;
+
+      // grid
+      ctx.strokeStyle = gridColor;
+      ctx.lineWidth = 1;
+      ctx.fillStyle = mutedColor;
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + plotH * (i / 4);
+        const val = maxE - (maxE - minE) * (i / 4);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(W - pad.r, y);
+        ctx.stroke();
+        ctx.fillText(Math.round(val) + 'm', pad.l - 4, y + 3);
+      }
+
+      // filled area under profile
+      ctx.beginPath();
+      withEle.forEach((p, i) => {
+        const x = pad.l + (p.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (p.ele - minE) / (maxE - minE));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      const lastX = pad.l + plotW;
+      const baseY = pad.t + plotH;
+      ctx.lineTo(lastX, baseY);
+      ctx.lineTo(pad.l, baseY);
+      ctx.closePath();
+      ctx.fillStyle = accent + '33';
+      // fallback if accent is not hex
+      try {
+        ctx.fillStyle = accent.length <= 7 ? accent + '33' : 'rgba(59,130,246,0.2)';
+      } catch (_) {
+        ctx.fillStyle = 'rgba(59,130,246,0.2)';
+      }
+      ctx.fill();
+
+      // line
+      ctx.beginPath();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      withEle.forEach((p, i) => {
+        const x = pad.l + (p.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (p.ele - minE) / (maxE - minE));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // min / max markers
+      const minPt = withEle.reduce((a, b) => a.ele <= b.ele ? a : b);
+      const maxPt = withEle.reduce((a, b) => a.ele >= b.ele ? a : b);
+      [[minPt, green], [maxPt, styles.getPropertyValue('--red').trim() || '#ef4444']].forEach(([pt, color]) => {
+        const x = pad.l + (pt.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (pt.ele - minE) / (maxE - minE));
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.fillStyle = mutedColor;
+      ctx.textAlign = 'center';
+      ctx.fillText('0', pad.l, H - 4);
+      ctx.fillText((maxDist / 1000).toFixed(1) + ' km', W - pad.r, H - 4);
     }
 
     function exportCompareCsv() {
@@ -1792,6 +1928,7 @@
       $('#detailName').textContent = '· ' + run.name;
       renderSummary(run.summary);
       renderHR(run.points);
+      drawElevChart(run.points);
       renderSplits(run.splits);
       renderRunList();
       rebuildMapLayers();
@@ -1935,7 +2072,10 @@
     window.addEventListener('resize', () => {
       if (map) map.invalidateSize();
       const run = runs.find(r => r.id === selectedId);
-      if (run) drawHRChart(run.points);
+      if (run) {
+        drawHRChart(run.points);
+        drawElevChart(run.points);
+      }
       if ($('#tab-compare')?.classList.contains('active')) renderOverlayCharts();
     });
   </script>
