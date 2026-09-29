@@ -609,6 +609,12 @@
         overlayHr: '心率 vs 距離',
         themeToggle: '切換主題',
         noOverlayData: '冇足夠數據可繪圖',
+        weatherTemp: '平均氣溫',
+        weatherHumidity: '平均濕度',
+        weatherWind: '平均風速',
+        weatherLoading: '天氣載入中…',
+        weatherNA: '—',
+        weatherSamples: '（{n} 個時段）',
       },
       en: {
         appTitle: 'Run Route Analyzer',
@@ -666,6 +672,12 @@
         overlayHr: 'HR vs distance',
         themeToggle: 'Toggle theme',
         noOverlayData: 'Not enough data to chart',
+        weatherTemp: 'Avg temp',
+        weatherHumidity: 'Avg humidity',
+        weatherWind: 'Avg wind',
+        weatherLoading: 'Loading weather…',
+        weatherNA: '—',
+        weatherSamples: '({n} hours)',
       }
     };
 
@@ -991,11 +1003,157 @@
         }
       }
       const pace = (duration != null && dist > 0) ? (duration / dist) * 1000 : null;
+
+      // Centroid for weather lookup
+      let latSum = 0, lonSum = 0;
+      points.forEach(p => { latSum += p.lat; lonSum += p.lon; });
+      const lat = latSum / points.length;
+      const lon = lonSum / points.length;
+
       return {
-        dist, duration, startTime, endTime,
+        dist, duration, startTime, endTime, lat, lon,
         avgHr, maxHr, minHr, elevGain, elevLoss, pace,
         pointCount: points.length, hasHr: hrs.length > 0
       };
+    }
+
+    // ========== Weather (Open-Meteo) ==========
+    function toDateStr(d) {
+      // local YYYY-MM-DD
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    async function fetchWeatherForRun(run) {
+      const sum = run.summary;
+      if (!sum.startTime || !sum.endTime || sum.lat == null || sum.lon == null) {
+        run.weather = { status: 'error' };
+        return;
+      }
+      run.weather = { status: 'loading' };
+      refreshWeatherUI(run);
+
+      const start = sum.startTime;
+      const end = sum.endTime;
+      // Expand slightly so boundary hours are included
+      const startDate = toDateStr(start);
+      let endDate = toDateStr(end);
+      // If run crosses midnight, endDate is already next day
+      const startMs = start.getTime();
+      const endMs = end.getTime();
+
+      const params = new URLSearchParams({
+        latitude: sum.lat.toFixed(4),
+        longitude: sum.lon.toFixed(4),
+        start_date: startDate,
+        end_date: endDate,
+        hourly: 'temperature_2m,relative_humidity_2m,wind_speed_10m',
+        timezone: 'auto',
+        wind_speed_unit: 'ms'
+      });
+
+      try {
+        // Prefer archive (ERA5). Recent days may lag ~5 days — fallback to forecast past_days.
+        let url = `https://archive-api.open-meteo.com/v1/archive?${params}`;
+        let res = await fetch(url);
+        let data = res.ok ? await res.json() : null;
+
+        const hasHourly = data && data.hourly && data.hourly.time && data.hourly.time.length;
+        if (!hasHourly) {
+          // Fallback: forecast API with past_days (good for last ~2 weeks)
+          const daysAgo = Math.ceil((Date.now() - startMs) / 86400000) + 1;
+          const pastDays = Math.min(92, Math.max(1, daysAgo));
+          const fParams = new URLSearchParams({
+            latitude: sum.lat.toFixed(4),
+            longitude: sum.lon.toFixed(4),
+            hourly: 'temperature_2m,relative_humidity_2m,wind_speed_10m',
+            past_days: String(pastDays),
+            forecast_days: '1',
+            timezone: 'auto',
+            wind_speed_unit: 'ms'
+          });
+          res = await fetch(`https://api.open-meteo.com/v1/forecast?${fParams}`);
+          data = res.ok ? await res.json() : null;
+        }
+
+        if (!data || !data.hourly || !data.hourly.time) {
+          run.weather = { status: 'error' };
+          refreshWeatherUI(run);
+          return;
+        }
+
+        const times = data.hourly.time;
+        const temps = data.hourly.temperature_2m || [];
+        const hums = data.hourly.relative_humidity_2m || [];
+        const winds = data.hourly.wind_speed_10m || [];
+
+        const tempsSel = [], humsSel = [], windsSel = [];
+        for (let i = 0; i < times.length; i++) {
+          // Open-Meteo times are local wall time when timezone=auto, parse as local
+          const t = new Date(times[i]);
+          const tMs = t.getTime();
+          // Include hour if it overlaps [start, end] (hour block starting at t)
+          const hourEnd = tMs + 3600000;
+          if (hourEnd > startMs && tMs < endMs) {
+            if (temps[i] != null && !isNaN(temps[i])) tempsSel.push(temps[i]);
+            if (hums[i] != null && !isNaN(hums[i])) humsSel.push(hums[i]);
+            if (winds[i] != null && !isNaN(winds[i])) windsSel.push(winds[i]);
+          }
+        }
+
+        // If no overlap (timezone edge cases), take closest hours within ±3h of midpoint
+        if (!tempsSel.length && temps.length) {
+          const mid = (startMs + endMs) / 2;
+          let best = 0, bestDiff = Infinity;
+          for (let i = 0; i < times.length; i++) {
+            const diff = Math.abs(new Date(times[i]).getTime() - mid);
+            if (diff < bestDiff) { bestDiff = diff; best = i; }
+          }
+          const lo = Math.max(0, best - 1);
+          const hi = Math.min(times.length - 1, best + 1);
+          for (let i = lo; i <= hi; i++) {
+            if (temps[i] != null) tempsSel.push(temps[i]);
+            if (hums[i] != null) humsSel.push(hums[i]);
+            if (winds[i] != null) windsSel.push(winds[i]);
+          }
+        }
+
+        const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+        run.weather = {
+          status: 'ok',
+          temp: avg(tempsSel),
+          humidity: avg(humsSel),
+          wind: avg(windsSel), // m/s
+          samples: Math.max(tempsSel.length, humsSel.length, windsSel.length),
+          lat: data.latitude,
+          lon: data.longitude
+        };
+      } catch (e) {
+        console.error('weather fetch failed', e);
+        run.weather = { status: 'error' };
+      }
+      refreshWeatherUI(run);
+    }
+
+    function refreshWeatherUI(run) {
+      if (run.id === selectedId) {
+        renderSummary(run.summary);
+      }
+      if ($('#tab-compare')?.classList.contains('active')) {
+        renderCompare();
+      }
+    }
+
+    function weatherLabel(run, key) {
+      const w = run.weather;
+      if (!w || w.status === 'loading') return t('weatherLoading');
+      if (w.status !== 'ok') return t('weatherNA');
+      if (key === 'temp') return w.temp != null ? `${w.temp.toFixed(1)} °C` : t('weatherNA');
+      if (key === 'humidity') return w.humidity != null ? `${Math.round(w.humidity)} %` : t('weatherNA');
+      if (key === 'wind') return w.wind != null ? `${w.wind.toFixed(1)} m/s` : t('weatherNA');
+      return t('weatherNA');
     }
 
     // ========== State ==========
@@ -1179,6 +1337,18 @@
     }
 
     function renderSummary(sum) {
+      const run = runs.find(r => r.id === selectedId);
+      const w = run && run.weather;
+      let tempVal = t('weatherNA'), humVal = t('weatherNA'), windVal = t('weatherNA'), wHint = '';
+      if (w && w.status === 'loading') {
+        tempVal = humVal = windVal = '…';
+      } else if (w && w.status === 'ok') {
+        tempVal = w.temp != null ? `${w.temp.toFixed(1)} °C` : t('weatherNA');
+        humVal = w.humidity != null ? `${Math.round(w.humidity)} %` : t('weatherNA');
+        windVal = w.wind != null ? `${w.wind.toFixed(1)} m/s` : t('weatherNA');
+        if (w.samples) wHint = ` <small>${t('weatherSamples', { n: w.samples })}</small>`;
+      }
+
       $('#summaryStats').innerHTML = `
         <div class="stat"><div class="stat-label">${t('date')}</div><div class="stat-value" style="font-size:0.95rem">${fmt.date(sum.startTime)}</div></div>
         <div class="stat"><div class="stat-label">${t('startTime')}</div><div class="stat-value" style="font-size:0.95rem">${fmt.clock(sum.startTime)}</div></div>
@@ -1190,6 +1360,9 @@
         <div class="stat"><div class="stat-label">${t('maxHr')}</div><div class="stat-value">${fmt.hr(sum.maxHr)}</div></div>
         <div class="stat"><div class="stat-label">${t('elevGain')}</div><div class="stat-value">${Math.round(sum.elevGain)} <small>m</small></div></div>
         <div class="stat"><div class="stat-label">${t('elevLoss')}</div><div class="stat-value">${Math.round(sum.elevLoss)} <small>m</small></div></div>
+        <div class="stat"><div class="stat-label">${t('weatherTemp')}</div><div class="stat-value" style="font-size:0.95rem">${tempVal}${wHint}</div></div>
+        <div class="stat"><div class="stat-label">${t('weatherHumidity')}</div><div class="stat-value" style="font-size:0.95rem">${humVal}</div></div>
+        <div class="stat"><div class="stat-label">${t('weatherWind')}</div><div class="stat-value" style="font-size:0.95rem">${windVal}</div></div>
       `;
     }
 
@@ -1446,6 +1619,9 @@
       rows.push([t('avgHr'), ...visible.map(r => r.summary.avgHr != null ? Math.round(r.summary.avgHr) : '')]);
       rows.push([t('maxHr'), ...visible.map(r => r.summary.maxHr != null ? Math.round(r.summary.maxHr) : '')]);
       rows.push([t('elevGain'), ...visible.map(r => Math.round(r.summary.elevGain))]);
+      rows.push([t('weatherTemp'), ...visible.map(r => r.weather && r.weather.status === 'ok' && r.weather.temp != null ? r.weather.temp.toFixed(1) : '')]);
+      rows.push([t('weatherHumidity'), ...visible.map(r => r.weather && r.weather.status === 'ok' && r.weather.humidity != null ? Math.round(r.weather.humidity) : '')]);
+      rows.push([t('weatherWind'), ...visible.map(r => r.weather && r.weather.status === 'ok' && r.weather.wind != null ? r.weather.wind.toFixed(1) : '')]);
       rows.push([]);
 
       // Pace by km
@@ -1539,6 +1715,9 @@
         { key: 'avgHr', label: t('avgHr'), fmt: (r) => fmt.hr(r.summary.avgHr), best: null },
         { key: 'maxHr', label: t('maxHr'), fmt: (r) => fmt.hr(r.summary.maxHr), best: null },
         { key: 'elevGain', label: t('elevGain'), fmt: (r) => Math.round(r.summary.elevGain) + ' m', best: null },
+        { key: 'wTemp', label: t('weatherTemp'), fmt: (r) => weatherLabel(r, 'temp'), best: null },
+        { key: 'wHum', label: t('weatherHumidity'), fmt: (r) => weatherLabel(r, 'humidity'), best: null },
+        { key: 'wWind', label: t('weatherWind'), fmt: (r) => weatherLabel(r, 'wind'), best: null },
       ];
 
       sumTable.querySelector('thead').innerHTML = `<tr>
@@ -1651,6 +1830,7 @@
         id, name: shortName(name), color,
         points, splits, summary,
         visible: true,
+        weather: null,
         layer: null, markersLayer: null
       };
       runs.push(run);
@@ -1663,6 +1843,7 @@
       renderRunList();
       selectRun(id);
       renderCompare();
+      fetchWeatherForRun(run);
     }
 
     function clearAll() {
