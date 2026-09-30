@@ -1477,47 +1477,55 @@
       if (!maxDist || maxDist <= 0) return;
       ctx.textAlign = 'center';
       ctx.font = '10px sans-serif';
+      ctx.setLineDash([]);
 
-      // 500m ticks (no label), 1km labels
-      const step = 500;
-      for (let d = 0; d <= maxDist + 1; d += step) {
-        if (d > maxDist && d - maxDist > 50) break;
-        const dist = Math.min(d, maxDist);
-        const x = pad.l + (dist / maxDist) * plotW;
-        const isKm = dist % 1000 < 1 || Math.abs(dist % 1000 - 1000) < 1 || dist === 0;
+      const axisY = pad.t + plotH;
+      // Draw every 500m using integer meters to avoid float issues
+      const maxM = Math.floor(maxDist);
+      for (let d = 0; d <= maxM; d += 500) {
+        const x = pad.l + (d / maxDist) * plotW;
+        const isKm = d % 1000 === 0;
 
-        // tick mark
-        ctx.strokeStyle = isKm ? mutedColor : gridColor;
-        ctx.lineWidth = isKm ? 1.2 : 0.8;
-        ctx.beginPath();
-        ctx.moveTo(x, pad.t + plotH);
-        ctx.lineTo(x, pad.t + plotH + (isKm ? 5 : 3));
-        ctx.stroke();
-
-        // faint vertical guide at whole km
-        if (isKm && dist > 0 && dist < maxDist - 50) {
-          ctx.strokeStyle = gridColor;
-          ctx.lineWidth = 0.6;
-          ctx.setLineDash([2, 3]);
-          ctx.beginPath();
-          ctx.moveTo(x, pad.t);
-          ctx.lineTo(x, pad.t + plotH);
-          ctx.stroke();
-          ctx.setLineDash([]);
-        }
-
-        // label every 1km
         if (isKm) {
+          // Full km: longer tick + dashed vertical guide
+          ctx.strokeStyle = mutedColor;
+          ctx.lineWidth = 1.25;
+          ctx.beginPath();
+          ctx.moveTo(x, axisY);
+          ctx.lineTo(x, axisY + 6);
+          ctx.stroke();
+
+          if (d > 0 && d < maxDist - 80) {
+            ctx.strokeStyle = gridColor;
+            ctx.lineWidth = 0.7;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(x, pad.t);
+            ctx.lineTo(x, axisY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
           ctx.fillStyle = mutedColor;
-          const km = Math.round(dist / 1000);
-          ctx.fillText(String(km), x, H - 3);
+          ctx.fillText(String(d / 1000), x, H - 2);
+        } else {
+          // 500m: short tick upward into chart + downward
+          ctx.strokeStyle = mutedColor;
+          ctx.globalAlpha = 0.55;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, axisY - 6);
+          ctx.lineTo(x, axisY + 4);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
         }
       }
-      // end label if not on exact km
+
+      // End label if not on exact km
       const endKm = maxDist / 1000;
       if (Math.abs(endKm - Math.round(endKm)) > 0.05) {
         ctx.fillStyle = mutedColor;
-        ctx.fillText(endKm.toFixed(1), pad.l + plotW, H - 3);
+        ctx.fillText(endKm.toFixed(1), pad.l + plotW, H - 2);
       }
     }
 
