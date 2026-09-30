@@ -1469,9 +1469,56 @@
       });
       ctx.stroke();
 
+      drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor);
+    }
+
+    /** X-axis: tick every 500m, label every 1km */
+    function drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor) {
+      if (!maxDist || maxDist <= 0) return;
       ctx.textAlign = 'center';
-      ctx.fillText('0', pad.l, H - 4);
-      ctx.fillText((maxDist / 1000).toFixed(1) + 'km', W - pad.r, H - 4);
+      ctx.font = '10px sans-serif';
+
+      // 500m ticks (no label), 1km labels
+      const step = 500;
+      for (let d = 0; d <= maxDist + 1; d += step) {
+        if (d > maxDist && d - maxDist > 50) break;
+        const dist = Math.min(d, maxDist);
+        const x = pad.l + (dist / maxDist) * plotW;
+        const isKm = dist % 1000 < 1 || Math.abs(dist % 1000 - 1000) < 1 || dist === 0;
+
+        // tick mark
+        ctx.strokeStyle = isKm ? mutedColor : gridColor;
+        ctx.lineWidth = isKm ? 1.2 : 0.8;
+        ctx.beginPath();
+        ctx.moveTo(x, pad.t + plotH);
+        ctx.lineTo(x, pad.t + plotH + (isKm ? 5 : 3));
+        ctx.stroke();
+
+        // faint vertical guide at whole km
+        if (isKm && dist > 0 && dist < maxDist - 50) {
+          ctx.strokeStyle = gridColor;
+          ctx.lineWidth = 0.6;
+          ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x, pad.t);
+          ctx.lineTo(x, pad.t + plotH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        // label every 1km
+        if (isKm) {
+          ctx.fillStyle = mutedColor;
+          const km = Math.round(dist / 1000);
+          ctx.fillText(String(km), x, H - 3);
+        }
+      }
+      // end label if not on exact km
+      const endKm = maxDist / 1000;
+      if (Math.abs(endKm - Math.round(endKm)) > 0.05) {
+        ctx.fillStyle = mutedColor;
+        ctx.fillText(endKm.toFixed(1), pad.l + plotW, H - 3);
+      }
     }
 
     /** Sample series along distance for overlay charts */
@@ -1596,10 +1643,7 @@
         ctx.fillText(label, pad.l - 4, y + 3);
       }
 
-      // x labels
-      ctx.textAlign = 'center';
-      ctx.fillText('0', pad.l, H - 4);
-      ctx.fillText((maxDist / 1000).toFixed(1) + ' km', W - pad.r, H - 4);
+      drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor);
 
       // lines
       series.forEach(s => {
@@ -1733,10 +1777,7 @@
         ctx.fill();
       });
 
-      ctx.fillStyle = mutedColor;
-      ctx.textAlign = 'center';
-      ctx.fillText('0', pad.l, H - 4);
-      ctx.fillText((maxDist / 1000).toFixed(1) + ' km', W - pad.r, H - 4);
+      drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor);
     }
 
     function exportCompareCsv() {
