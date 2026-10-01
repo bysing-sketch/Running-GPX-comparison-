@@ -490,6 +490,35 @@
     .weather-block .stats-grid {
       margin-top: 0;
     }
+    .hr-settings {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem 0.85rem;
+      margin-bottom: 0.55rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+    }
+    .hr-settings label {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+    .hr-settings input[type="number"] {
+      width: 4.2rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.25rem 0.4rem;
+      font-size: 0.8rem;
+    }
+    .hr-settings-hint {
+      flex: 1 1 100%;
+      font-size: 0.7rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
   </style>
 </head>
 <body>
@@ -538,6 +567,15 @@
           </div>
           <div class="panel">
             <h2 data-i18n="hrDistribution">心率分佈</h2>
+            <div class="hr-settings" id="hrSettings">
+              <label><span data-i18n="hrMax">最大心率</span>
+                <input type="number" id="hrMaxInput" min="120" max="230" step="1" />
+              </label>
+              <label><span data-i18n="hrRest">安靜心率</span>
+                <input type="number" id="hrRestInput" min="30" max="120" step="1" />
+              </label>
+              <span class="hr-settings-hint" id="hrZoneHint"></span>
+            </div>
             <div class="hr-bar" id="hrBar"></div>
             <div class="hr-legend" id="hrLegend"></div>
             <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
@@ -710,6 +748,9 @@
         weatherSourceArchive: 'Open-Meteo · ERA5 再分析網格',
         weatherSourceForecast: 'Open-Meteo · 預報／近期歸檔',
         weatherGrid: '網格點 {lat}, {lon}',
+        hrMax: '最大心率',
+        hrRest: '安靜心率',
+        hrKarvonenHint: 'Karvonen：易 &lt;60% · 中 60–80% · 高 &gt;80% 心率儲備 → {lo} / {hi} bpm',
       },
       en: {
         appTitle: 'Run Route Analyzer',
@@ -784,6 +825,9 @@
         weatherSourceArchive: 'Open-Meteo · ERA5 reanalysis grid',
         weatherSourceForecast: 'Open-Meteo · forecast / recent archive',
         weatherGrid: 'Grid {lat}, {lon}',
+        hrMax: 'Max HR',
+        hrRest: 'Resting HR',
+        hrKarvonenHint: 'Karvonen: easy &lt;60% · mid 60–80% · hard &gt;80% HRR → {lo} / {hi} bpm',
       }
     };
 
@@ -820,6 +864,7 @@
       lang = next;
       localStorage.setItem('gpx-lang', lang);
       applyStaticI18n();
+      syncHrInputs();
       // Re-render dynamic content
       if (runs.length) {
         renderRunList();
@@ -1497,9 +1542,45 @@
       `;
     }
 
+    // Karvonen HR zones: target = (HRmax - HRrest) × % + HRrest
+    // Easy <60% HRR | Moderate 60–80% | Hard >80%
+    let hrMax = parseInt(localStorage.getItem('gpx-hr-max') || '190', 10);
+    let hrRest = parseInt(localStorage.getItem('gpx-hr-rest') || '60', 10);
+    if (!isFinite(hrMax) || hrMax < 120 || hrMax > 230) hrMax = 190;
+    if (!isFinite(hrRest) || hrRest < 30 || hrRest > 120) hrRest = 60;
+
+    function karvonenZones() {
+      let max = hrMax, rest = hrRest;
+      if (rest >= max) rest = Math.max(30, max - 40);
+      const hrr = max - rest;
+      const lo = Math.round(hrr * 0.60 + rest); // 60% HRR
+      const hi = Math.round(hrr * 0.80 + rest); // 80% HRR
+      return { lo, hi, max, rest, hrr };
+    }
+
+    function zoneOf(hr, lo, hi) {
+      if (hr < lo) return 'low';
+      if (hr < hi) return 'mid';
+      return 'high';
+    }
+
+    function syncHrInputs() {
+      const maxEl = $('#hrMaxInput');
+      const restEl = $('#hrRestInput');
+      if (maxEl) maxEl.value = hrMax;
+      if (restEl) restEl.value = hrRest;
+      const z = karvonenZones();
+      const hint = $('#hrZoneHint');
+      if (hint) {
+        hint.innerHTML = t('hrKarvonenHint', { lo: z.lo, hi: z.hi });
+      }
+    }
+
     function renderHR(points) {
       const bar = $('#hrBar');
       const legend = $('#hrLegend');
+      syncHrInputs();
+      const { lo, hi } = karvonenZones();
       const withHr = points.filter(p => p.hr != null);
       if (!withHr.length) {
         bar.innerHTML = '';
@@ -1508,11 +1589,12 @@
         return;
       }
 
-      // Point counts for bar width
+      // Point counts for bar width (Karvonen thresholds)
       let low = 0, mid = 0, high = 0;
       withHr.forEach(p => {
-        if (p.hr < 140) low++;
-        else if (p.hr < 165) mid++;
+        const z = zoneOf(p.hr, lo, hi);
+        if (z === 'low') low++;
+        else if (z === 'mid') mid++;
         else high++;
       });
       const total = withHr.length;
@@ -1527,8 +1609,9 @@
         if (curr.dt != null && prev.dt != null) dt = curr.dt - prev.dt;
         else if (curr.time && prev.time) dt = (curr.time - prev.time) / 1000;
         if (dt == null || dt < 0 || dt > 120) continue; // skip GPS gaps
-        if (hr < 140) lowT += dt;
-        else if (hr < 165) midT += dt;
+        const z = zoneOf(hr, lo, hi);
+        if (z === 'low') lowT += dt;
+        else if (z === 'mid') midT += dt;
         else highT += dt;
       }
       // Fallback: proportional to total duration if no gaps
@@ -1559,9 +1642,9 @@
         return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
       };
       legend.innerHTML = `
-        <span><i style="background:var(--hr-low)"></i>&lt;140 (${Math.round(low/total*100)}% · ${zoneTime(lowT)})</span>
-        <span><i style="background:var(--hr-mid)"></i>140–165 (${Math.round(mid/total*100)}% · ${zoneTime(midT)})</span>
-        <span><i style="background:var(--hr-high)"></i>&gt;165 (${Math.round(high/total*100)}% · ${zoneTime(highT)})</span>
+        <span><i style="background:var(--hr-low)"></i>&lt;${lo} (${Math.round(low/total*100)}% · ${zoneTime(lowT)})</span>
+        <span><i style="background:var(--hr-mid)"></i>${lo}–${hi} (${Math.round(mid/total*100)}% · ${zoneTime(midT)})</span>
+        <span><i style="background:var(--hr-high)"></i>&gt;${hi} (${Math.round(high/total*100)}% · ${zoneTime(highT)})</span>
       `;
       drawHRChart(points);
     }
@@ -2471,9 +2554,43 @@
       });
     }
 
+    // Karvonen HR settings
+    function onHrSettingChange() {
+      const maxEl = $('#hrMaxInput');
+      const restEl = $('#hrRestInput');
+      let max = parseInt(maxEl?.value, 10);
+      let rest = parseInt(restEl?.value, 10);
+      if (!isFinite(max) || max < 120) max = 120;
+      if (max > 230) max = 230;
+      if (!isFinite(rest) || rest < 30) rest = 30;
+      if (rest > 120) rest = 120;
+      if (rest >= max) rest = max - 1;
+      hrMax = max;
+      hrRest = rest;
+      localStorage.setItem('gpx-hr-max', String(hrMax));
+      localStorage.setItem('gpx-hr-rest', String(hrRest));
+      const run = runs.find(r => r.id === selectedId);
+      if (run) renderHR(run.points);
+      else syncHrInputs();
+    }
+    $('#hrMaxInput')?.addEventListener('change', onHrSettingChange);
+    $('#hrRestInput')?.addEventListener('change', onHrSettingChange);
+    $('#hrMaxInput')?.addEventListener('input', () => {
+      // live update hint only
+      const v = parseInt($('#hrMaxInput').value, 10);
+      if (isFinite(v)) hrMax = v;
+      syncHrInputs();
+    });
+    $('#hrRestInput')?.addEventListener('input', () => {
+      const v = parseInt($('#hrRestInput').value, 10);
+      if (isFinite(v)) hrRest = v;
+      syncHrInputs();
+    });
+
     // Init
     applyTheme();
     applyStaticI18n();
+    syncHrInputs();
     initMap();
     window.addEventListener('resize', () => {
       if (map) map.invalidateSize();
