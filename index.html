@@ -490,34 +490,117 @@
     .weather-block .stats-grid {
       margin-top: 0;
     }
+    .hr-zone-line {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin: -0.15rem 0 0.45rem;
+      line-height: 1.35;
+    }
     .hr-settings {
       display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.55rem 0.85rem;
-      margin-bottom: 0.55rem;
-      font-size: 0.75rem;
-      color: var(--muted);
+      flex-direction: column;
+      gap: 0.65rem;
+      font-size: 0.85rem;
+      color: var(--text);
     }
     .hr-settings label {
-      display: inline-flex;
+      display: flex;
       align-items: center;
-      gap: 0.35rem;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .hr-settings label span:first-child {
+      min-width: 5.5rem;
+      color: var(--muted);
+      font-size: 0.8rem;
     }
     .hr-settings input[type="number"] {
-      width: 4.2rem;
+      width: 5rem;
       background: var(--surface2);
       border: 1px solid var(--border);
       border-radius: 6px;
       color: var(--text);
-      padding: 0.25rem 0.4rem;
-      font-size: 0.8rem;
+      padding: 0.35rem 0.45rem;
+      font-size: 0.9rem;
+    }
+    .hr-settings .unit {
+      color: var(--muted);
+      font-size: 0.75rem;
     }
     .hr-settings-hint {
-      flex: 1 1 100%;
-      font-size: 0.7rem;
+      font-size: 0.75rem;
       color: var(--muted);
-      line-height: 1.35;
+      line-height: 1.4;
+      margin: 0.35rem 0 0.75rem;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: min(420px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-head h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    .modal-body {
+      padding: 1rem;
+    }
+    .modal-body h3 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin: 0 0 0.65rem;
+      color: var(--text);
+    }
+    .settings-help {
+      margin-top: 0.85rem;
+      padding: 0.75rem 0.85rem;
+      background: var(--surface2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .settings-help h4 {
+      font-size: 0.8rem;
+      margin: 0 0 0.45rem;
+      color: var(--text);
+    }
+    .settings-help p, .settings-help li {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0 0 0.4rem;
+    }
+    .settings-help ul {
+      margin: 0 0 0.4rem 1.1rem;
+      padding: 0;
+    }
+    .settings-help strong { color: var(--text); font-weight: 600; }
+    .modal-foot {
+      padding: 0.75rem 1rem 1rem;
+      display: flex;
+      justify-content: flex-end;
     }
   </style>
 </head>
@@ -530,6 +613,7 @@
         <button type="button" data-lang="en">EN</button>
       </div>
       <button type="button" class="theme-btn" id="themeBtn" title="Theme">🌙</button>
+      <button type="button" class="theme-btn" id="settingsBtn" title="Settings" data-i18n-title="settings">⚙️</button>
       <label class="btn" for="fileInput" data-i18n="importBtn">＋ 匯入 GPX</label>
       <input type="file" id="fileInput" accept=".gpx,application/gpx+xml,text/xml" multiple />
       <button class="btn btn-secondary" id="clearBtn" disabled data-i18n="clearAll">全部清除</button>
@@ -567,15 +651,7 @@
           </div>
           <div class="panel">
             <h2 data-i18n="hrDistribution">心率分佈</h2>
-            <div class="hr-settings" id="hrSettings">
-              <label><span data-i18n="hrMax">最大心率</span>
-                <input type="number" id="hrMaxInput" min="120" max="230" step="1" />
-              </label>
-              <label><span data-i18n="hrRest">安靜心率</span>
-                <input type="number" id="hrRestInput" min="30" max="120" step="1" />
-              </label>
-              <span class="hr-settings-hint" id="hrZoneHint"></span>
-            </div>
+            <p class="hr-zone-line" id="hrZoneHint"></p>
             <div class="hr-bar" id="hrBar"></div>
             <div class="hr-legend" id="hrLegend"></div>
             <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
@@ -672,6 +748,37 @@
     </aside>
   </main>
 
+  <!-- Settings modal -->
+  <div class="modal-backdrop" id="settingsModal" hidden>
+    <div class="modal" role="dialog" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <h2 id="settingsTitle" data-i18n="settingsTitle">設定</h2>
+        <button type="button" class="icon-btn" id="settingsClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <h3 data-i18n="hrSettingsTitle">心率區間（Karvonen）</h3>
+        <div class="hr-settings modal-hr-settings">
+          <label><span data-i18n="hrMax">最大心率</span>
+            <input type="number" id="hrMaxInput" min="120" max="230" step="1" />
+            <span class="unit">bpm</span>
+          </label>
+          <label><span data-i18n="hrRest">安靜心率</span>
+            <input type="number" id="hrRestInput" min="30" max="120" step="1" />
+            <span class="unit">bpm</span>
+          </label>
+        </div>
+        <p class="hr-settings-hint" id="hrZoneHintSettings"></p>
+        <div class="settings-help">
+          <h4 data-i18n="hrHelpTitle">點樣設定？</h4>
+          <div data-i18n-html="hrHelpBody"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn" id="settingsSave" data-i18n="settingsSave">儲存</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     // ========== i18n ==========
     const I18N = {
@@ -751,6 +858,12 @@
         hrMax: '最大心率',
         hrRest: '安靜心率',
         hrKarvonenHint: 'Karvonen：易 &lt;60% · 中 60–80% · 高 &gt;80% 心率儲備 → {lo} / {hi} bpm',
+        settings: '設定',
+        settingsTitle: '設定',
+        hrSettingsTitle: '心率區間（Karvonen）',
+        settingsSave: '儲存',
+        hrHelpTitle: '點樣設定最大／安靜心率？',
+        hrHelpBody: '<p><strong>安靜心率（Resting HR）</strong></p><ul><li>起床後、未起身前量一次（坐定或躺住）</li><li>用 Watch／胸帶睇 1–3 分鐘平均，取較低穩定值</li><li>一般人約 50–70；經常運動可能更低</li></ul><p><strong>最大心率（Max HR）</strong></p><ul><li>最準：實驗室或場地漸增負荷測試</li><li>實用：回顧過去最辛苦訓練／比賽嘅<strong>最高心率</strong>（可再加少少緩衝）</li><li>粗估：220 − 年齡（只供參考，誤差可以好大）</li></ul><p>設定會存喺呢部裝置嘅瀏覽器，唔使每次重設。</p>',
       },
       en: {
         appTitle: 'Run Route Analyzer',
@@ -828,6 +941,12 @@
         hrMax: 'Max HR',
         hrRest: 'Resting HR',
         hrKarvonenHint: 'Karvonen: easy &lt;60% · mid 60–80% · hard &gt;80% HRR → {lo} / {hi} bpm',
+        settings: 'Settings',
+        settingsTitle: 'Settings',
+        hrSettingsTitle: 'Heart rate zones (Karvonen)',
+        settingsSave: 'Save',
+        hrHelpTitle: 'How to set max & resting HR?',
+        hrHelpBody: '<p><strong>Resting HR</strong></p><ul><li>Measure after waking, before getting up</li><li>Use a watch/strap for 1–3 min and take a steady low value</li><li>Often ~50–70; fitter athletes may be lower</li></ul><p><strong>Max HR</strong></p><ul><li>Best: lab or field progressive test</li><li>Practical: highest HR from your hardest recent race/session (optional small buffer)</li><li>Rough estimate: 220 − age (can be quite wrong)</li></ul><p>Saved in this browser on your device — no need to re-enter every time.</p>',
       }
     };
 
@@ -1570,10 +1689,28 @@
       if (maxEl) maxEl.value = hrMax;
       if (restEl) restEl.value = hrRest;
       const z = karvonenZones();
+      const line = t('hrKarvonenHint', { lo: z.lo, hi: z.hi });
       const hint = $('#hrZoneHint');
-      if (hint) {
-        hint.innerHTML = t('hrKarvonenHint', { lo: z.lo, hi: z.hi });
-      }
+      if (hint) hint.innerHTML = line;
+      const hint2 = $('#hrZoneHintSettings');
+      if (hint2) hint2.innerHTML = line;
+    }
+
+    function openSettings() {
+      const modal = $('#settingsModal');
+      if (!modal) return;
+      syncHrInputs();
+      // refresh help HTML for current language
+      const help = modal.querySelector('[data-i18n-html="hrHelpBody"]');
+      if (help) help.innerHTML = t('hrHelpBody');
+      applyStaticI18n();
+      syncHrInputs();
+      modal.hidden = false;
+    }
+
+    function closeSettings() {
+      const modal = $('#settingsModal');
+      if (modal) modal.hidden = true;
     }
 
     function renderHR(points) {
@@ -2554,8 +2691,8 @@
       });
     }
 
-    // Karvonen HR settings
-    function onHrSettingChange() {
+    // Settings modal + Karvonen HR
+    function saveHrSettings() {
       const maxEl = $('#hrMaxInput');
       const restEl = $('#hrRestInput');
       let max = parseInt(maxEl?.value, 10);
@@ -2569,22 +2706,20 @@
       hrRest = rest;
       localStorage.setItem('gpx-hr-max', String(hrMax));
       localStorage.setItem('gpx-hr-rest', String(hrRest));
+      syncHrInputs();
       const run = runs.find(r => r.id === selectedId);
       if (run) renderHR(run.points);
-      else syncHrInputs();
+      closeSettings();
     }
-    $('#hrMaxInput')?.addEventListener('change', onHrSettingChange);
-    $('#hrRestInput')?.addEventListener('change', onHrSettingChange);
-    $('#hrMaxInput')?.addEventListener('input', () => {
-      // live update hint only
-      const v = parseInt($('#hrMaxInput').value, 10);
-      if (isFinite(v)) hrMax = v;
-      syncHrInputs();
+
+    $('#settingsBtn')?.addEventListener('click', openSettings);
+    $('#settingsClose')?.addEventListener('click', closeSettings);
+    $('#settingsSave')?.addEventListener('click', saveHrSettings);
+    $('#settingsModal')?.addEventListener('click', (e) => {
+      if (e.target === $('#settingsModal')) closeSettings();
     });
-    $('#hrRestInput')?.addEventListener('input', () => {
-      const v = parseInt($('#hrRestInput').value, 10);
-      if (isFinite(v)) hrRest = v;
-      syncHrInputs();
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeSettings();
     });
 
     // Init
