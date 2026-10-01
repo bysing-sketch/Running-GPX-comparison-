@@ -1498,31 +1498,70 @@
     }
 
     function renderHR(points) {
-      const hrs = points.filter(p => p.hr != null).map(p => p.hr);
       const bar = $('#hrBar');
       const legend = $('#hrLegend');
-      if (!hrs.length) {
+      const withHr = points.filter(p => p.hr != null);
+      if (!withHr.length) {
         bar.innerHTML = '';
         legend.innerHTML = `<span>${t('noHrData')}</span>`;
         drawHRChart([]);
         return;
       }
+
+      // Point counts for bar width
       let low = 0, mid = 0, high = 0;
-      hrs.forEach(h => {
-        if (h < 140) low++;
-        else if (h < 165) mid++;
+      withHr.forEach(p => {
+        if (p.hr < 140) low++;
+        else if (p.hr < 165) mid++;
         else high++;
       });
-      const total = hrs.length;
+      const total = withHr.length;
+
+      // Time spent in each zone (seconds) from consecutive sample gaps
+      let lowT = 0, midT = 0, highT = 0;
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1], curr = points[i];
+        const hr = curr.hr != null ? curr.hr : prev.hr;
+        if (hr == null) continue;
+        let dt = null;
+        if (curr.dt != null && prev.dt != null) dt = curr.dt - prev.dt;
+        else if (curr.time && prev.time) dt = (curr.time - prev.time) / 1000;
+        if (dt == null || dt < 0 || dt > 120) continue; // skip GPS gaps
+        if (hr < 140) lowT += dt;
+        else if (hr < 165) midT += dt;
+        else highT += dt;
+      }
+      // Fallback: proportional to total duration if no gaps
+      const timed = lowT + midT + highT;
+      if (timed < 1) {
+        let totalDur = null;
+        const last = points[points.length - 1];
+        if (last.dt != null) totalDur = last.dt;
+        else if (last.time && points[0].time) totalDur = (last.time - points[0].time) / 1000;
+        if (totalDur && total > 0) {
+          lowT = totalDur * (low / total);
+          midT = totalDur * (mid / total);
+          highT = totalDur * (high / total);
+        }
+      }
+
       bar.innerHTML = `
         <span style="width:${(low/total)*100}%;background:var(--hr-low)"></span>
         <span style="width:${(mid/total)*100}%;background:var(--hr-mid)"></span>
         <span style="width:${(high/total)*100}%;background:var(--hr-high)"></span>
       `;
+      const zoneTime = (sec) => {
+        if (sec == null || isNaN(sec)) return '—';
+        sec = Math.round(sec);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      };
       legend.innerHTML = `
-        <span><i style="background:var(--hr-low)"></i>&lt;140 (${Math.round(low/total*100)}%)</span>
-        <span><i style="background:var(--hr-mid)"></i>140–165 (${Math.round(mid/total*100)}%)</span>
-        <span><i style="background:var(--hr-high)"></i>&gt;165 (${Math.round(high/total*100)}%)</span>
+        <span><i style="background:var(--hr-low)"></i>&lt;140 (${Math.round(low/total*100)}% · ${zoneTime(lowT)})</span>
+        <span><i style="background:var(--hr-mid)"></i>140–165 (${Math.round(mid/total*100)}% · ${zoneTime(midT)})</span>
+        <span><i style="background:var(--hr-high)"></i>&gt;165 (${Math.round(high/total*100)}% · ${zoneTime(highT)})</span>
       `;
       drawHRChart(points);
     }
