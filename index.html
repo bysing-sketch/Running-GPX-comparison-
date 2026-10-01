@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.124.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.124.0/examples/js/controls/OrbitControls.js"></script>
   <style>
     :root, [data-theme="dark"] {
       --bg: #0f1419;
@@ -428,6 +430,44 @@
       line-height: 1;
     }
     .theme-btn:hover { border-color: var(--accent); }
+    .view3d-wrap {
+      position: relative;
+      height: 280px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #0a0e14;
+      border: 1px solid var(--border);
+    }
+    [data-theme="light"] .view3d-wrap { background: #e8eef5; }
+    .view3d-wrap canvas { display: block; width: 100% !important; height: 100% !important; }
+    .view3d-hint {
+      position: absolute;
+      left: 8px;
+      bottom: 8px;
+      font-size: 0.65rem;
+      color: var(--muted);
+      background: rgba(0,0,0,0.45);
+      padding: 0.2rem 0.45rem;
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    [data-theme="light"] .view3d-hint { background: rgba(255,255,255,0.75); }
+    .view3d-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.45rem;
+      align-items: center;
+    }
+    .view3d-controls label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .view3d-controls input[type="range"] { width: 90px; accent-color: var(--accent); }
   </style>
 </head>
 <body>
@@ -482,6 +522,18 @@
           <div class="panel">
             <h2 data-i18n="elevProfile">海拔剖面</h2>
             <div class="chart-wrap overlay"><canvas id="elevChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="view3d">3D 地形路線</h2>
+            <div class="view3d-wrap" id="view3dWrap">
+              <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放</div>
+            </div>
+            <div class="view3d-controls">
+              <label><span data-i18n="elevScale">海拔誇張</span>
+                <input type="range" id="elevScale" min="1" max="12" step="0.5" value="4" />
+              </label>
+              <button type="button" class="btn btn-secondary btn-sm" id="reset3dBtn" data-i18n="reset3d">重設視角</button>
+            </div>
           </div>
           <div class="panel">
             <h2 data-i18n="kmSplits">每公里分段</h2>
@@ -621,6 +673,10 @@
         elevProfile: '海拔剖面',
         overlayElev: '海拔 vs 距離',
         noElevData: '無海拔數據',
+        view3d: '3D 地形路線',
+        view3dHint: '拖曳旋轉 · 雙指／滾輪縮放',
+        elevScale: '海拔誇張',
+        reset3d: '重設視角',
         weatherTemp: '平均氣溫',
         weatherHumidity: '平均濕度',
         weatherWind: '平均風速',
@@ -687,6 +743,10 @@
         elevProfile: 'Elevation profile',
         overlayElev: 'Elevation vs distance',
         noElevData: 'No elevation data',
+        view3d: '3D terrain route',
+        view3dHint: 'Drag to rotate · pinch/scroll to zoom',
+        elevScale: 'Elev. exaggeration',
+        reset3d: 'Reset view',
         weatherTemp: 'Avg temp',
         weatherHumidity: 'Avg humidity',
         weatherWind: 'Avg wind',
@@ -1981,7 +2041,190 @@
       renderSplits(run.splits);
       renderRunList();
       rebuildMapLayers();
+      update3DView(run);
       if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+    }
+
+    // ========== 3D terrain route (Three.js) ==========
+    let scene3d = null, camera3d = null, renderer3d = null, controls3d = null;
+    let anim3dId = null, meshGroup3d = null;
+
+    function dispose3DMeshes() {
+      if (meshGroup3d && scene3d) {
+        scene3d.remove(meshGroup3d);
+        meshGroup3d.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
+            else obj.material.dispose();
+          }
+        });
+        meshGroup3d = null;
+      }
+    }
+
+    function init3D() {
+      const wrap = $('#view3dWrap');
+      if (!wrap || typeof THREE === 'undefined') return false;
+      if (renderer3d) return true;
+
+      const w = wrap.clientWidth || 300;
+      const h = wrap.clientHeight || 220;
+
+      scene3d = new THREE.Scene();
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1419';
+      scene3d.background = new THREE.Color(bg);
+
+      camera3d = new THREE.PerspectiveCamera(50, w / h, 0.1, 50000);
+      camera3d.position.set(200, 150, 200);
+
+      renderer3d = new THREE.WebGLRenderer({ antialias: true });
+      renderer3d.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer3d.setSize(w, h);
+      const hint = wrap.querySelector('.view3d-hint');
+      if (hint) wrap.insertBefore(renderer3d.domElement, hint);
+      else wrap.appendChild(renderer3d.domElement);
+
+      if (typeof THREE.OrbitControls === 'function') {
+        controls3d = new THREE.OrbitControls(camera3d, renderer3d.domElement);
+      }
+      if (controls3d) {
+        controls3d.enableDamping = true;
+        controls3d.dampingFactor = 0.08;
+        controls3d.maxPolarAngle = Math.PI * 0.48;
+        controls3d.minDistance = 20;
+        controls3d.maxDistance = 8000;
+      }
+
+      scene3d.add(new THREE.AmbientLight(0xffffff, 0.75));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+      dir.position.set(100, 200, 80);
+      scene3d.add(dir);
+
+      (function animate() {
+        anim3dId = requestAnimationFrame(animate);
+        if (controls3d) controls3d.update();
+        if (renderer3d && scene3d && camera3d) renderer3d.render(scene3d, camera3d);
+      })();
+      return true;
+    }
+
+    function latLonToLocal(lat, lon, ele, origin, exaggerate) {
+      const R = 6371000;
+      const lat0 = origin.lat * Math.PI / 180;
+      const x = (lon - origin.lon) * Math.PI / 180 * R * Math.cos(lat0);
+      const z = -((lat - origin.lat) * Math.PI / 180 * R);
+      const y = ((ele != null ? ele : origin.ele0) - origin.ele0) * exaggerate;
+      return new THREE.Vector3(x, y, z);
+    }
+
+    function update3DView(run) {
+      if (!run || !run.points || run.points.length < 2) return;
+      if (!init3D()) return;
+
+      dispose3DMeshes();
+      meshGroup3d = new THREE.Group();
+
+      const pts = run.points;
+      const eles = pts.map(p => p.ele).filter(e => e != null);
+      const ele0 = eles.length ? Math.min(...eles) : 0;
+      const origin = { lat: pts[0].lat, lon: pts[0].lon, ele0 };
+      const exaggerate = parseFloat($('#elevScale')?.value) || 4;
+
+      const step = Math.max(1, Math.floor(pts.length / 1500));
+      const pathVecs = [];
+      for (let i = 0; i < pts.length; i += step) {
+        const p = pts[i];
+        pathVecs.push(latLonToLocal(p.lat, p.lon, p.ele, origin, exaggerate));
+      }
+      const last = pts[pts.length - 1];
+      pathVecs.push(latLonToLocal(last.lat, last.lon, last.ele, origin, exaggerate));
+
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      pathVecs.forEach(v => {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.z < minZ) minZ = v.z;
+        if (v.z > maxZ) maxZ = v.z;
+      });
+      const span = Math.max(maxX - minX, maxZ - minZ, 50);
+
+      const grid = new THREE.GridHelper(span * 1.4, 20, 0x3b82f6, 0x2d3a4f);
+      meshGroup3d.add(grid);
+
+      if (pathVecs.length >= 2) {
+        const ribbonPositions = [];
+        const ribbonIndices = [];
+        for (let i = 0; i < pathVecs.length; i++) {
+          const v = pathVecs[i];
+          ribbonPositions.push(v.x, Math.max(0, v.y), v.z);
+          ribbonPositions.push(v.x, 0, v.z);
+        }
+        for (let i = 0; i < pathVecs.length - 1; i++) {
+          const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+          ribbonIndices.push(a, b, c, b, d, c);
+        }
+        const ribbonGeo = new THREE.BufferGeometry();
+        ribbonGeo.setAttribute('position', new THREE.Float32BufferAttribute(ribbonPositions, 3));
+        ribbonGeo.setIndex(ribbonIndices);
+        ribbonGeo.computeVertexNormals();
+        meshGroup3d.add(new THREE.Mesh(ribbonGeo, new THREE.MeshPhongMaterial({
+          color: 0x3b82f6, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false
+        })));
+      }
+
+      const lineGeo = new THREE.BufferGeometry().setFromPoints(pathVecs);
+      meshGroup3d.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: run.color || 0x3b82f6 })));
+
+      const startMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(span * 0.012, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e })
+      );
+      startMesh.position.copy(pathVecs[0]);
+      meshGroup3d.add(startMesh);
+
+      const endMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(span * 0.012, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      endMesh.position.copy(pathVecs[pathVecs.length - 1]);
+      meshGroup3d.add(endMesh);
+
+      if (run.splits) {
+        run.splits.forEach(s => {
+          if (s.partial || s.lat == null) return;
+          const v = latLonToLocal(s.lat, s.lon, s.ele != null ? s.ele : ele0, origin, exaggerate);
+          const m = new THREE.Mesh(
+            new THREE.SphereGeometry(span * 0.008, 10, 10),
+            new THREE.MeshBasicMaterial({ color: 0xf59e0b })
+          );
+          m.position.copy(v);
+          meshGroup3d.add(m);
+        });
+      }
+
+      scene3d.add(meshGroup3d);
+
+      const midX = (minX + maxX) / 2;
+      const midZ = (minZ + maxZ) / 2;
+      const maxY = Math.max(...pathVecs.map(v => v.y), 10);
+      if (controls3d) controls3d.target.set(midX, maxY * 0.3, midZ);
+      camera3d.position.set(midX + span * 0.7, maxY + span * 0.5, midZ + span * 0.7);
+      camera3d.lookAt(midX, maxY * 0.2, midZ);
+      if (controls3d) controls3d.update();
+
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1419';
+      scene3d.background = new THREE.Color(bg);
+    }
+
+    function resize3D() {
+      const wrap = $('#view3dWrap');
+      if (!wrap || !renderer3d || !camera3d) return;
+      const w = wrap.clientWidth || 300;
+      const h = wrap.clientHeight || 220;
+      camera3d.aspect = w / h;
+      camera3d.updateProjectionMatrix();
+      renderer3d.setSize(w, h);
     }
 
     function removeRun(id) {
@@ -2040,6 +2283,7 @@
       runs = [];
       selectedId = null;
       nextColorIdx = 0;
+      dispose3DMeshes();
       $('#content').style.display = 'none';
       $('#emptyState').style.display = 'block';
       $('#clearBtn').disabled = true;
@@ -2109,10 +2353,30 @@
     });
 
     // Theme toggle
-    $('#themeBtn').addEventListener('click', toggleTheme);
+    $('#themeBtn').addEventListener('click', () => {
+      toggleTheme();
+      const run = runs.find(r => r.id === selectedId);
+      if (run && renderer3d) update3DView(run);
+    });
 
     // CSV export
     $('#exportCsvBtn').addEventListener('click', exportCompareCsv);
+
+    // 3D controls
+    const elevScaleEl = $('#elevScale');
+    if (elevScaleEl) {
+      elevScaleEl.addEventListener('input', () => {
+        const run = runs.find(r => r.id === selectedId);
+        if (run) update3DView(run);
+      });
+    }
+    const reset3dBtn = $('#reset3dBtn');
+    if (reset3dBtn) {
+      reset3dBtn.addEventListener('click', () => {
+        const run = runs.find(r => r.id === selectedId);
+        if (run) update3DView(run);
+      });
+    }
 
     // Init
     applyTheme();
@@ -2125,6 +2389,7 @@
         drawHRChart(run.points);
         drawElevChart(run.points);
       }
+      resize3D();
       if ($('#tab-compare')?.classList.contains('active')) renderOverlayCharts();
     });
   </script>
