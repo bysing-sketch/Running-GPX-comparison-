@@ -867,6 +867,7 @@
         weatherSourceArchive: 'Open-Meteo · ERA5 再分析網格',
         weatherSourceForecast: 'Open-Meteo · 預報／近期歸檔',
         weatherGrid: '網格點 {lat}, {lon}',
+        weatherNear: '{place} 附近',
         hrMax: '最大心率',
         hrRest: '安靜心率',
         hrKarvonenHint: 'Karvonen：易 &lt;60% · 中 60–80% · 高 &gt;80% 心率儲備 → {lo} / {hi} bpm',
@@ -951,6 +952,7 @@
         weatherSourceArchive: 'Open-Meteo · ERA5 reanalysis grid',
         weatherSourceForecast: 'Open-Meteo · forecast / recent archive',
         weatherGrid: 'Grid {lat}, {lon}',
+        weatherNear: 'Near {place}',
         hrMax: 'Max HR',
         hrRest: 'Resting HR',
         hrKarvonenHint: 'Karvonen: easy &lt;60% · mid 60–80% · hard &gt;80% HRR → {lo} / {hi} bpm',
@@ -1417,13 +1419,59 @@
           samples: Math.max(tempsSel.length, humsSel.length, windsSel.length),
           lat: data.latitude,
           lon: data.longitude,
-          source
+          source,
+          place: null
         };
+        refreshWeatherUI(run);
+        // Reverse-geocode grid point for a readable place name (best-effort)
+        reverseGeocodePlace(data.latitude, data.longitude).then(place => {
+          if (run.weather && run.weather.status === 'ok') {
+            run.weather.place = place;
+            refreshWeatherUI(run);
+          }
+        });
+        return;
       } catch (e) {
         console.error('weather fetch failed', e);
         run.weather = { status: 'error' };
       }
       refreshWeatherUI(run);
+    }
+
+    async function reverseGeocodePlace(lat, lon) {
+      if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return null;
+      try {
+        // BigDataCloud client endpoint — no API key, browser-friendly
+        const locLang = (typeof lang !== 'undefined' && lang === 'en') ? 'en' : 'zh';
+        const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=${locLang}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const j = await res.json();
+        // Prefer locality / city-level names useful in HK
+        const candidates = [
+          j.locality,
+          j.city,
+          j.principalSubdivision,
+          j.localityInfo && j.localityInfo.administrative && j.localityInfo.administrative[0] && j.localityInfo.administrative[0].name
+        ].filter(Boolean);
+        // Deduplicate and pick first meaningful short name
+        const seen = new Set();
+        for (const c of candidates) {
+          const name = String(c).trim();
+          if (!name || name.length > 40) continue;
+          if (seen.has(name)) continue;
+          seen.add(name);
+          // Skip generic country-level
+          if (/中國|中国|China|Hong Kong|香港特別行政區|香港特别行政区/i.test(name) && seen.size === 1) {
+            continue;
+          }
+          return name;
+        }
+        return candidates[0] || null;
+      } catch (e) {
+        console.warn('reverse geocode failed', e);
+        return null;
+      }
     }
 
     function refreshWeatherUI(run) {
@@ -1656,10 +1704,16 @@
         windVal = w.wind != null ? `${w.wind.toFixed(1)} m/s` : t('weatherNA');
         if (w.samples) wHint = ` <small>${t('weatherSamples', { n: w.samples })}</small>`;
         const srcLabel = w.source === 'forecast' ? t('weatherSourceForecast') : t('weatherSourceArchive');
+        const place = w.place
+          ? t('weatherNear', { place: w.place })
+          : null;
         const grid = (w.lat != null && w.lon != null)
           ? t('weatherGrid', { lat: Number(w.lat).toFixed(3), lon: Number(w.lon).toFixed(3) })
           : '';
-        sourceLine = grid ? `${srcLabel}<br>${grid}` : srcLabel;
+        if (place && grid) sourceLine = `${srcLabel}<br>${place} · ${grid}`;
+        else if (place) sourceLine = `${srcLabel}<br>${place}`;
+        else if (grid) sourceLine = `${srcLabel}<br>${grid}`;
+        else sourceLine = srcLabel;
       } else {
         sourceLine = t('weatherNA');
       }
@@ -2472,9 +2526,19 @@
         if (v.z < minZ) minZ = v.z;
         if (v.z > maxZ) maxZ = v.z;
       });
-      const span = Math.max(maxX - minX, maxZ - minZ, 50);
+      const midX = (minX + maxX) / 2;
+      const midZ = (minZ + maxZ) / 2;
+      // Use radius from centre so elongated routes still fit on the grid
+      let maxR = 50;
+      pathVecs.forEach(v => {
+        const r = Math.hypot(v.x - midX, v.z - midZ);
+        if (r > maxR) maxR = r;
+      });
+      const span = Math.max(maxX - minX, maxZ - minZ, maxR * 2, 50);
+      const gridSize = span * 2.2;
 
-      const grid = new THREE.GridHelper(span * 1.4, 20, 0x3b82f6, 0x2d3a4f);
+      const grid = new THREE.GridHelper(gridSize, 24, 0x3b82f6, 0x2d3a4f);
+      grid.position.set(midX, 0, midZ);
       meshGroup3d.add(grid);
 
       if (pathVecs.length >= 2) {
@@ -2530,12 +2594,21 @@
 
       scene3d.add(meshGroup3d);
 
-      const midX = (minX + maxX) / 2;
-      const midZ = (minZ + maxZ) / 2;
       const maxY = Math.max(...pathVecs.map(v => v.y), 10);
-      if (controls3d) controls3d.target.set(midX, maxY * 0.3, midZ);
-      camera3d.position.set(midX + span * 0.7, maxY + span * 0.5, midZ + span * 0.7);
-      camera3d.lookAt(midX, maxY * 0.2, midZ);
+      const minY = Math.min(...pathVecs.map(v => v.y), 0);
+      const fitR = Math.max(maxR, span * 0.5, 40);
+      const camDist = fitR * 1.8;
+      const targetY = (maxY + minY) * 0.35;
+
+      if (controls3d) {
+        controls3d.target.set(midX, targetY, midZ);
+        controls3d.minDistance = Math.max(15, fitR * 0.15);
+        controls3d.maxDistance = Math.max(500, fitR * 8);
+        controls3d.update();
+      }
+      // High-angle overview so the whole route stays in frame
+      camera3d.position.set(midX + camDist * 0.55, Math.max(maxY * 1.2, camDist * 0.65), midZ + camDist * 0.55);
+      camera3d.lookAt(midX, targetY, midZ);
       if (controls3d) controls3d.update();
 
       const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1419';
