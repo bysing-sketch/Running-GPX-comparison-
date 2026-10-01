@@ -490,12 +490,22 @@
     .weather-block .stats-grid {
       margin-top: 0;
     }
-    .hr-zone-line {
-      font-size: 0.7rem;
-      color: var(--muted);
-      margin: -0.15rem 0 0.45rem;
-      line-height: 1.35;
+    .panel-head-hr {
+      margin-bottom: 0.45rem;
     }
+    .panel-head-hr h2 { margin-bottom: 0; }
+    .hr-settings-link {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.7rem;
+      cursor: pointer;
+      padding: 0.15rem 0.25rem;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      white-space: nowrap;
+    }
+    .hr-settings-link:hover { color: var(--accent); }
     .hr-settings {
       display: flex;
       flex-direction: column;
@@ -650,8 +660,10 @@
             <div class="weather-block" id="weatherBlock"></div>
           </div>
           <div class="panel">
-            <h2 data-i18n="hrDistribution">心率分佈</h2>
-            <p class="hr-zone-line" id="hrZoneHint"></p>
+            <div class="panel-head panel-head-hr">
+              <h2 data-i18n="hrDistribution">心率分佈</h2>
+              <button type="button" class="hr-settings-link" id="hrSettingsLink" data-i18n="hrSettingsReminder">設定心率</button>
+            </div>
             <div class="hr-bar" id="hrBar"></div>
             <div class="hr-legend" id="hrLegend"></div>
             <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
@@ -858,6 +870,7 @@
         hrMax: '最大心率',
         hrRest: '安靜心率',
         hrKarvonenHint: 'Karvonen：易 &lt;60% · 中 60–80% · 高 &gt;80% 心率儲備 → {lo} / {hi} bpm',
+        hrSettingsReminder: '設定心率',
         settings: '設定',
         settingsTitle: '設定',
         hrSettingsTitle: '心率區間（Karvonen）',
@@ -941,6 +954,7 @@
         hrMax: 'Max HR',
         hrRest: 'Resting HR',
         hrKarvonenHint: 'Karvonen: easy &lt;60% · mid 60–80% · hard &gt;80% HRR → {lo} / {hi} bpm',
+        hrSettingsReminder: 'Set HR',
         settings: 'Settings',
         settingsTitle: 'Settings',
         hrSettingsTitle: 'Heart rate zones (Karvonen)',
@@ -1690,8 +1704,6 @@
       if (restEl) restEl.value = hrRest;
       const z = karvonenZones();
       const line = t('hrKarvonenHint', { lo: z.lo, hi: z.hi });
-      const hint = $('#hrZoneHint');
-      if (hint) hint.innerHTML = line;
       const hint2 = $('#hrZoneHintSettings');
       if (hint2) hint2.innerHTML = line;
     }
@@ -2713,6 +2725,7 @@
     }
 
     $('#settingsBtn')?.addEventListener('click', openSettings);
+    $('#hrSettingsLink')?.addEventListener('click', openSettings);
     $('#settingsClose')?.addEventListener('click', closeSettings);
     $('#settingsSave')?.addEventListener('click', saveHrSettings);
     $('#settingsModal')?.addEventListener('click', (e) => {
