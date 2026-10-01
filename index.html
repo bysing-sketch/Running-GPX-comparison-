@@ -468,6 +468,28 @@
       gap: 0.25rem;
     }
     .view3d-controls input[type="range"] { width: 90px; accent-color: var(--accent); }
+    .weather-block {
+      margin-top: 0.85rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .weather-block-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.2rem;
+    }
+    .weather-block-source {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 0.55rem;
+      line-height: 1.4;
+    }
+    .weather-block .stats-grid {
+      margin-top: 0;
+    }
   </style>
 </head>
 <body>
@@ -512,6 +534,7 @@
           <div class="panel">
             <h2><span data-i18n="overview">總覽</span> <span id="detailName" style="text-transform:none;letter-spacing:0;color:var(--text);font-weight:500"></span></h2>
             <div class="stats-grid" id="summaryStats"></div>
+            <div class="weather-block" id="weatherBlock"></div>
           </div>
           <div class="panel">
             <h2 data-i18n="hrDistribution">心率分佈</h2>
@@ -522,18 +545,6 @@
           <div class="panel">
             <h2 data-i18n="elevProfile">海拔剖面</h2>
             <div class="chart-wrap overlay"><canvas id="elevChart"></canvas></div>
-          </div>
-          <div class="panel">
-            <h2 data-i18n="view3d">3D 地形路線</h2>
-            <div class="view3d-wrap" id="view3dWrap">
-              <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放</div>
-            </div>
-            <div class="view3d-controls">
-              <label><span data-i18n="elevScale">海拔誇張</span>
-                <input type="range" id="elevScale" min="1" max="12" step="0.5" value="4" />
-              </label>
-              <button type="button" class="btn btn-secondary btn-sm" id="reset3dBtn" data-i18n="reset3d">重設視角</button>
-            </div>
           </div>
           <div class="panel">
             <h2 data-i18n="kmSplits">每公里分段</h2>
@@ -555,6 +566,18 @@
                 </thead>
                 <tbody id="splitsBody"></tbody>
               </table>
+            </div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="view3d">3D 地形路線</h2>
+            <div class="view3d-wrap" id="view3dWrap">
+              <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放</div>
+            </div>
+            <div class="view3d-controls">
+              <label><span data-i18n="elevScale">海拔誇張</span>
+                <input type="range" id="elevScale" min="1" max="12" step="0.5" value="4" />
+              </label>
+              <button type="button" class="btn btn-secondary btn-sm" id="reset3dBtn" data-i18n="reset3d">重設視角</button>
             </div>
           </div>
         </div>
@@ -683,6 +706,10 @@
         weatherLoading: '天氣載入中…',
         weatherNA: '—',
         weatherSamples: '（{n} 個時段）',
+        weatherSection: '天氣資訊',
+        weatherSourceArchive: 'Open-Meteo · ERA5 再分析網格',
+        weatherSourceForecast: 'Open-Meteo · 預報／近期歸檔',
+        weatherGrid: '網格點 {lat}, {lon}',
       },
       en: {
         appTitle: 'Run Route Analyzer',
@@ -753,6 +780,10 @@
         weatherLoading: 'Loading weather…',
         weatherNA: '—',
         weatherSamples: '({n} hours)',
+        weatherSection: 'Weather',
+        weatherSourceArchive: 'Open-Meteo · ERA5 reanalysis grid',
+        weatherSourceForecast: 'Open-Meteo · forecast / recent archive',
+        weatherGrid: 'Grid {lat}, {lon}',
       }
     };
 
@@ -1133,6 +1164,7 @@
 
       try {
         // Prefer archive (ERA5). Recent days may lag ~5 days — fallback to forecast past_days.
+        let source = 'archive';
         let url = `https://archive-api.open-meteo.com/v1/archive?${params}`;
         let res = await fetch(url);
         let data = res.ok ? await res.json() : null;
@@ -1140,6 +1172,7 @@
         const hasHourly = data && data.hourly && data.hourly.time && data.hourly.time.length;
         if (!hasHourly) {
           // Fallback: forecast API with past_days (good for last ~2 weeks)
+          source = 'forecast';
           const daysAgo = Math.ceil((Date.now() - startMs) / 86400000) + 1;
           const pastDays = Math.min(92, Math.max(1, daysAgo));
           const fParams = new URLSearchParams({
@@ -1205,7 +1238,8 @@
           wind: avg(windsSel), // m/s
           samples: Math.max(tempsSel.length, humsSel.length, windsSel.length),
           lat: data.latitude,
-          lon: data.longitude
+          lon: data.longitude,
+          source
         };
       } catch (e) {
         console.error('weather fetch failed', e);
@@ -1416,15 +1450,6 @@
     function renderSummary(sum) {
       const run = runs.find(r => r.id === selectedId);
       const w = run && run.weather;
-      let tempVal = t('weatherNA'), humVal = t('weatherNA'), windVal = t('weatherNA'), wHint = '';
-      if (w && w.status === 'loading') {
-        tempVal = humVal = windVal = '…';
-      } else if (w && w.status === 'ok') {
-        tempVal = w.temp != null ? `${w.temp.toFixed(1)} °C` : t('weatherNA');
-        humVal = w.humidity != null ? `${Math.round(w.humidity)} %` : t('weatherNA');
-        windVal = w.wind != null ? `${w.wind.toFixed(1)} m/s` : t('weatherNA');
-        if (w.samples) wHint = ` <small>${t('weatherSamples', { n: w.samples })}</small>`;
-      }
 
       $('#summaryStats').innerHTML = `
         <div class="stat"><div class="stat-label">${t('date')}</div><div class="stat-value" style="font-size:0.95rem">${fmt.date(sum.startTime)}</div></div>
@@ -1437,9 +1462,38 @@
         <div class="stat"><div class="stat-label">${t('maxHr')}</div><div class="stat-value">${fmt.hr(sum.maxHr)}</div></div>
         <div class="stat"><div class="stat-label">${t('elevGain')}</div><div class="stat-value">${Math.round(sum.elevGain)} <small>m</small></div></div>
         <div class="stat"><div class="stat-label">${t('elevLoss')}</div><div class="stat-value">${Math.round(sum.elevLoss)} <small>m</small></div></div>
-        <div class="stat"><div class="stat-label">${t('weatherTemp')}</div><div class="stat-value" style="font-size:0.95rem">${tempVal}${wHint}</div></div>
-        <div class="stat"><div class="stat-label">${t('weatherHumidity')}</div><div class="stat-value" style="font-size:0.95rem">${humVal}</div></div>
-        <div class="stat"><div class="stat-label">${t('weatherWind')}</div><div class="stat-value" style="font-size:0.95rem">${windVal}</div></div>
+      `;
+
+      const block = $('#weatherBlock');
+      if (!block) return;
+
+      let tempVal = t('weatherNA'), humVal = t('weatherNA'), windVal = t('weatherNA'), wHint = '';
+      let sourceLine = '';
+      if (w && w.status === 'loading') {
+        tempVal = humVal = windVal = '…';
+        sourceLine = t('weatherLoading');
+      } else if (w && w.status === 'ok') {
+        tempVal = w.temp != null ? `${w.temp.toFixed(1)} °C` : t('weatherNA');
+        humVal = w.humidity != null ? `${Math.round(w.humidity)} %` : t('weatherNA');
+        windVal = w.wind != null ? `${w.wind.toFixed(1)} m/s` : t('weatherNA');
+        if (w.samples) wHint = ` <small>${t('weatherSamples', { n: w.samples })}</small>`;
+        const srcLabel = w.source === 'forecast' ? t('weatherSourceForecast') : t('weatherSourceArchive');
+        const grid = (w.lat != null && w.lon != null)
+          ? t('weatherGrid', { lat: Number(w.lat).toFixed(3), lon: Number(w.lon).toFixed(3) })
+          : '';
+        sourceLine = grid ? `${srcLabel}<br>${grid}` : srcLabel;
+      } else {
+        sourceLine = t('weatherNA');
+      }
+
+      block.innerHTML = `
+        <div class="weather-block-title">${t('weatherSection')}</div>
+        <div class="weather-block-source">${sourceLine}</div>
+        <div class="stats-grid">
+          <div class="stat"><div class="stat-label">${t('weatherTemp')}</div><div class="stat-value" style="font-size:0.95rem">${tempVal}${wHint}</div></div>
+          <div class="stat"><div class="stat-label">${t('weatherHumidity')}</div><div class="stat-value" style="font-size:0.95rem">${humVal}</div></div>
+          <div class="stat"><div class="stat-label">${t('weatherWind')}</div><div class="stat-value" style="font-size:0.95rem">${windVal}</div></div>
+        </div>
       `;
     }
 
