@@ -828,6 +828,14 @@
                       <option value="fpv" data-i18n="viewFpv">跟隨視角</option>
                     </select>
                   </label>
+                  <label class="playback-speed">
+                    <span data-i18n="mapStyle3d">底圖</span>
+                    <select id="mapStyle3d">
+                      <option value="street" data-i18n="mapStreet">街道</option>
+                      <option value="sat" data-i18n="mapSat">衛星</option>
+                      <option value="none" data-i18n="mapNone">格網</option>
+                    </select>
+                  </label>
                   <button type="button" class="btn btn-secondary btn-sm" id="reset3dBtn" data-i18n="reset3d">重設視角</button>
                 </div>
                 <div class="playback-bar" id="playbackBar">
@@ -1010,6 +1018,10 @@
         viewFpv: '跟隨視角',
         hudDist: '距離',
         hudElev: '海拔',
+        mapStyle3d: '底圖',
+        mapStreet: '街道',
+        mapSat: '衛星',
+        mapNone: '格網',
         weatherTemp: '平均氣溫',
         weatherHumidity: '平均濕度',
         weatherWind: '平均風速',
@@ -1105,6 +1117,10 @@
         viewFpv: 'Follow cam',
         hudDist: 'Dist',
         hudElev: 'Elev',
+        mapStyle3d: 'Base',
+        mapStreet: 'Street',
+        mapSat: 'Satellite',
+        mapNone: 'Grid',
         weatherTemp: 'Avg temp',
         weatherHumidity: 'Avg humidity',
         weatherWind: 'Avg wind',
@@ -2641,8 +2657,11 @@
         meshGroup3d.traverse(obj => {
           if (obj.geometry) obj.geometry.dispose();
           if (obj.material) {
-            if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose());
-            else obj.material.dispose();
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach(m => {
+              if (m.map) m.map.dispose();
+              m.dispose();
+            });
           }
         });
         meshGroup3d = null;
@@ -2705,6 +2724,91 @@
       return new THREE.Vector3(x, y, z);
     }
 
+    function lonLatToTile(lon, lat, zoom) {
+      const n = Math.pow(2, zoom);
+      const x = Math.floor((lon + 180) / 360 * n);
+      const latRad = lat * Math.PI / 180;
+      const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+      return { x, y, n };
+    }
+
+    function tileToLonLat(x, y, zoom) {
+      const n = Math.pow(2, zoom);
+      const lon = x / n * 360 - 180;
+      const latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n)));
+      const lat = latRad * 180 / Math.PI;
+      return { lon, lat };
+    }
+
+    function tileUrl(style, z, x, y) {
+      // Esri ArcGIS Online tiles — no API key for light browser use (order is z/y/x)
+      if (style === 'sat') {
+        return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+      }
+      // Street map (Carto free CDN now requires API key — do not use)
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${z}/${y}/${x}`;
+    }
+
+    function addMapGround(group, origin, minLat, maxLat, minLon, maxLon, style) {
+      if (style === 'none') return null;
+      // Choose zoom so we load a manageable number of tiles
+      let zoom = 16;
+      for (let z = 18; z >= 12; z--) {
+        const a = lonLatToTile(minLon, maxLat, z); // NW
+        const b = lonLatToTile(maxLon, minLat, z); // SE
+        const nx = b.x - a.x + 1;
+        const ny = b.y - a.y + 1;
+        if (nx * ny <= 36) { zoom = z; break; }
+        zoom = z;
+      }
+      const nw = lonLatToTile(minLon, maxLat, zoom);
+      const se = lonLatToTile(maxLon, minLat, zoom);
+      const x0 = Math.min(nw.x, se.x);
+      const x1 = Math.max(nw.x, se.x);
+      const y0 = Math.min(nw.y, se.y);
+      const y1 = Math.max(nw.y, se.y);
+      const loader = new THREE.TextureLoader();
+      loader.crossOrigin = 'anonymous';
+      const tileGroup = new THREE.Group();
+      tileGroup.name = 'mapGround';
+
+      for (let tx = x0; tx <= x1; tx++) {
+        for (let ty = y0; ty <= y1; ty++) {
+          const ul = tileToLonLat(tx, ty, zoom);
+          const br = tileToLonLat(tx + 1, ty + 1, zoom);
+          const pUL = latLonToLocal(ul.lat, ul.lon, origin.ele0, origin, 1);
+          const pUR = latLonToLocal(ul.lat, br.lon, origin.ele0, origin, 1);
+          const pBL = latLonToLocal(br.lat, ul.lon, origin.ele0, origin, 1);
+          const pBR = latLonToLocal(br.lat, br.lon, origin.ele0, origin, 1);
+          const w = Math.hypot(pUR.x - pUL.x, pUR.z - pUL.z);
+          const h = Math.hypot(pBL.x - pUL.x, pBL.z - pUL.z);
+          const cx = (pUL.x + pBR.x) / 2;
+          const cz = (pUL.z + pBR.z) / 2;
+          const geo = new THREE.PlaneGeometry(w, h);
+          // Plane is XY by default; rotate to XZ (ground)
+          geo.rotateX(-Math.PI / 2);
+          const mat = new THREE.MeshBasicMaterial({
+            color: 0x888888,
+            side: THREE.DoubleSide,
+            depthWrite: true
+          });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(cx, -0.15, cz); // slightly below path
+          tileGroup.add(mesh);
+          const url = tileUrl(style, zoom, tx, ty);
+          loader.load(url, (tex) => {
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            mat.map = tex;
+            mat.color.set(0xffffff);
+            mat.needsUpdate = true;
+          }, undefined, () => { /* keep grey fallback */ });
+        }
+      }
+      group.add(tileGroup);
+      return tileGroup;
+    }
+
     function update3DView(run) {
       if (!run || !run.points || run.points.length < 2) return;
       if (!init3D()) return;
@@ -2745,9 +2849,35 @@
       const span = Math.max(maxX - minX, maxZ - minZ, maxR * 2, 50);
       const gridSize = span * 2.2;
 
-      const grid = new THREE.GridHelper(gridSize, 24, 0x3b82f6, 0x2d3a4f);
-      grid.position.set(midX, 0, midZ);
-      meshGroup3d.add(grid);
+      // Real map ground (street / satellite) or plain grid
+      let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+      pts.forEach(p => {
+        if (p.lat < minLat) minLat = p.lat;
+        if (p.lat > maxLat) maxLat = p.lat;
+        if (p.lon < minLon) minLon = p.lon;
+        if (p.lon > maxLon) maxLon = p.lon;
+      });
+      const pad = 0.0015; // ~150m
+      minLat -= pad; maxLat += pad; minLon -= pad; maxLon += pad;
+      const mapStyle = $('#mapStyle3d')?.value || 'street';
+      if (mapStyle === 'none') {
+        const grid = new THREE.GridHelper(gridSize, 24, 0x3b82f6, 0x2d3a4f);
+        grid.position.set(midX, 0, midZ);
+        meshGroup3d.add(grid);
+      } else {
+        addMapGround(meshGroup3d, origin, minLat, maxLat, minLon, maxLon, mapStyle);
+        // subtle grid overlay for scale
+        const grid = new THREE.GridHelper(gridSize, 12, 0x3b82f6, 0x1a2332);
+        grid.position.set(midX, 0.05, midZ);
+        grid.material.forEach ? grid.material.forEach(m => { m.transparent = true; m.opacity = 0.15; }) : null;
+        if (Array.isArray(grid.material)) {
+          grid.material.forEach(m => { m.transparent = true; m.opacity = 0.12; });
+        } else if (grid.material) {
+          grid.material.transparent = true;
+          grid.material.opacity = 0.12;
+        }
+        meshGroup3d.add(grid);
+      }
 
       if (pathVecs.length >= 2) {
         const ribbonPositions = [];
@@ -3229,6 +3359,10 @@
         };
       }
       applyViewModeCamera();
+    });
+    $('#mapStyle3d')?.addEventListener('change', () => {
+      const run = runs.find(r => r.id === selectedId);
+      if (run) update3DView(run);
     });
     $('#scrub3d')?.addEventListener('input', (e) => {
       const dur = pathPlayback.duration || 0;
