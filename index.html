@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>GPX 跑步路線分析</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -516,9 +516,19 @@
     .view3d-panel.is-expanded .view3d-dock {
       flex: 0 0 auto;
       margin: 0;
-      padding: 0.55rem 0.75rem 0.7rem;
+      /* Extra bottom inset so scrubber stays above iPad home / app-switch gesture zone */
+      padding: 0.55rem 0.75rem calc(1.35rem + env(safe-area-inset-bottom, 0px));
+      padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+      padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
       background: var(--surface);
       border-top: 1px solid var(--border);
+    }
+    .view3d-panel.is-expanded .playback-bar {
+      padding-bottom: 0.15rem;
+    }
+    .view3d-panel.is-expanded .playback-bar #scrub3d {
+      /* Larger touch target; keep thumb away from screen edge */
+      min-height: 28px;
     }
     .view3d-panel.is-expanded .view3d-hint { bottom: 16px; left: 16px; }
     .view3d-panel.is-expanded .view3d-hud { top: 14px; left: 14px; }
