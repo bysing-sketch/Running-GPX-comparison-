@@ -470,18 +470,59 @@
     }
     [data-theme="light"] .view3d-expand-btn { background: rgba(255,255,255,0.85); }
     .view3d-expand-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .view3d-wrap.is-expanded {
+    .view3d-panel {
+      position: relative;
+    }
+    .view3d-dock {
+      margin-top: 0.35rem;
+    }
+    .view3d-hud {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 3;
+      font-size: 0.68rem;
+      line-height: 1.45;
+      color: rgba(255,255,255,0.85);
+      background: rgba(0,0,0,0.4);
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      pointer-events: none;
+      font-variant-numeric: tabular-nums;
+    }
+    [data-theme="light"] .view3d-hud {
+      color: rgba(20,30,40,0.85);
+      background: rgba(255,255,255,0.75);
+    }
+    .view3d-hud strong { font-weight: 600; color: inherit; }
+    .view3d-panel.is-expanded {
       position: fixed;
       inset: 0;
       z-index: 10000;
-      height: 100vh !important;
-      width: 100vw !important;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      border: none;
+      border-radius: 0;
+    }
+    .view3d-panel.is-expanded .view3d-wrap {
+      flex: 1 1 auto;
+      height: auto !important;
+      min-height: 0;
       border-radius: 0;
       border: none;
       cursor: default;
     }
-    .view3d-wrap.is-expanded .view3d-hint { bottom: 16px; left: 16px; }
-    .view3d-wrap.is-expanded .view3d-expand-btn {
+    .view3d-panel.is-expanded .view3d-dock {
+      flex: 0 0 auto;
+      margin: 0;
+      padding: 0.55rem 0.75rem 0.7rem;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    .view3d-panel.is-expanded .view3d-hint { bottom: 16px; left: 16px; }
+    .view3d-panel.is-expanded .view3d-hud { top: 14px; left: 14px; }
+    .view3d-panel.is-expanded .view3d-expand-btn {
       top: 12px;
       right: 12px;
       padding: 0.4rem 0.65rem;
@@ -503,6 +544,41 @@
       gap: 0.25rem;
     }
     .view3d-controls input[type="range"] { width: 90px; accent-color: var(--accent); }
+    .playback-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.55rem;
+      margin-top: 0.55rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .playback-bar #scrub3d {
+      flex: 1 1 120px;
+      min-width: 100px;
+      accent-color: var(--accent);
+    }
+    .playback-speed {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .playback-speed select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.2rem 0.3rem;
+      font-size: 0.75rem;
+    }
+    .playback-time {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
     .weather-block {
       margin-top: 0.85rem;
       padding-top: 0.75rem;
@@ -731,15 +807,46 @@
           </div>
           <div class="panel">
             <h2 data-i18n="view3d">3D 地形路線</h2>
-            <div class="view3d-wrap" id="view3dWrap" title="">
-              <button type="button" class="view3d-expand-btn" id="expand3dBtn" data-i18n="expand3d">放大</button>
-              <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放 · 撳放大</div>
-            </div>
-            <div class="view3d-controls">
-              <label><span data-i18n="elevScale">海拔誇張</span>
-                <input type="range" id="elevScale" min="1" max="12" step="0.5" value="4" />
-              </label>
-              <button type="button" class="btn btn-secondary btn-sm" id="reset3dBtn" data-i18n="reset3d">重設視角</button>
+            <div class="view3d-panel" id="view3dPanel">
+              <div class="view3d-wrap" id="view3dWrap" title="">
+                <button type="button" class="view3d-expand-btn" id="expand3dBtn" data-i18n="expand3d">放大</button>
+                <div class="view3d-hud" id="view3dHud">
+                  <div><span data-i18n="hudDist">距離</span> <strong id="hudDist">0.00</strong> / <span id="hudDistTotal">0.00</span> km</div>
+                  <div><span data-i18n="hudElev">海拔</span> <strong id="hudElev">—</strong> m</div>
+                </div>
+                <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放 · 撳放大</div>
+              </div>
+              <div class="view3d-dock">
+                <div class="view3d-controls">
+                  <label><span data-i18n="elevScale">海拔誇張</span>
+                    <input type="range" id="elevScale" min="1" max="12" step="0.5" value="4" />
+                  </label>
+                  <label class="playback-speed">
+                    <span data-i18n="viewMode3d">視角</span>
+                    <select id="viewMode3d">
+                      <option value="overview" data-i18n="viewOverview">俯瞰</option>
+                      <option value="fpv" data-i18n="viewFpv">跟隨視角</option>
+                    </select>
+                  </label>
+                  <button type="button" class="btn btn-secondary btn-sm" id="reset3dBtn" data-i18n="reset3d">重設視角</button>
+                </div>
+                <div class="playback-bar" id="playbackBar">
+                  <button type="button" class="btn btn-secondary btn-sm" id="play3dBtn" data-i18n="play3d">播放</button>
+                  <label class="playback-speed">
+                    <span data-i18n="speed3d">倍速</span>
+                    <select id="speed3dSelect">
+                      <option value="1">1×</option>
+                      <option value="2">2×</option>
+                      <option value="5">5×</option>
+                      <option value="10" selected>10×</option>
+                      <option value="50">50×</option>
+                      <option value="100">100×</option>
+                    </select>
+                  </label>
+                  <input type="range" id="scrub3d" min="0" max="1000" value="0" step="1" />
+                  <span class="playback-time" id="playbackTime">0:00 / 0:00</span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -895,6 +1002,14 @@
         collapse3d: '關閉',
         elevScale: '海拔誇張',
         reset3d: '重設視角',
+        play3d: '播放',
+        pause3d: '暫停',
+        speed3d: '倍速',
+        viewMode3d: '視角',
+        viewOverview: '俯瞰',
+        viewFpv: '跟隨視角',
+        hudDist: '距離',
+        hudElev: '海拔',
         weatherTemp: '平均氣溫',
         weatherHumidity: '平均濕度',
         weatherWind: '平均風速',
@@ -982,6 +1097,14 @@
         collapse3d: 'Close',
         elevScale: 'Elev. exaggeration',
         reset3d: 'Reset view',
+        play3d: 'Play',
+        pause3d: 'Pause',
+        speed3d: 'Speed',
+        viewMode3d: 'View',
+        viewOverview: 'Overview',
+        viewFpv: 'Follow cam',
+        hudDist: 'Dist',
+        hudElev: 'Elev',
         weatherTemp: 'Avg temp',
         weatherHumidity: 'Avg humidity',
         weatherWind: 'Avg wind',
@@ -2467,8 +2590,52 @@
     // ========== 3D terrain route (Three.js) ==========
     let scene3d = null, camera3d = null, renderer3d = null, controls3d = null;
     let anim3dId = null, meshGroup3d = null;
+    let pathPlayback = {
+      samples: [],
+      duration: 0,
+      t: 0,
+      playing: false,
+      speed: 10,
+      marker: null,
+      lastFrame: null,
+      markerBaseSize: 1,
+      viewMode: 'overview',
+      overviewCam: null // { pos, target } snapshot
+    };
+
+    function makeKmSprite(label, size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.beginPath();
+      ctx.arc(32, 32, 26, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = '#111';
+      ctx.font = 'bold 26px system-ui,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(label), 32, 33);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(size, size, 1);
+      return sprite;
+    }
 
     function dispose3DMeshes() {
+      stopPlayback(false);
+      pathPlayback.marker = null;
+      pathPlayback.samples = [];
+      pathPlayback.duration = 0;
+      pathPlayback.t = 0;
+      pathPlayback.lastFrame = null;
       if (meshGroup3d && scene3d) {
         scene3d.remove(meshGroup3d);
         meshGroup3d.traverse(obj => {
@@ -2520,8 +2687,9 @@
       dir.position.set(100, 200, 80);
       scene3d.add(dir);
 
-      (function animate() {
+      (function animate(now) {
         anim3dId = requestAnimationFrame(animate);
+        tickPlayback(now);
         if (controls3d) controls3d.update();
         if (renderer3d && scene3d && camera3d) renderer3d.render(scene3d, camera3d);
       })();
@@ -2620,19 +2788,60 @@
       meshGroup3d.add(endMesh);
 
       if (run.splits) {
+        const labelSize = Math.max(span * 0.045, 8);
         run.splits.forEach(s => {
           if (s.partial || s.lat == null) return;
           const v = latLonToLocal(s.lat, s.lon, s.ele != null ? s.ele : ele0, origin, exaggerate);
-          const m = new THREE.Mesh(
-            new THREE.SphereGeometry(span * 0.008, 10, 10),
-            new THREE.MeshBasicMaterial({ color: 0xf59e0b })
-          );
-          m.position.copy(v);
-          meshGroup3d.add(m);
+          const kmNum = Math.round(s.km);
+          const sprite = makeKmSprite(kmNum, labelSize);
+          sprite.position.set(v.x, v.y + labelSize * 0.35, v.z);
+          meshGroup3d.add(sprite);
         });
       }
 
+      // Playback samples (denser than display line) + moving marker
+      const pbStep = Math.max(1, Math.floor(pts.length / 4000));
+      const samples = [];
+      for (let i = 0; i < pts.length; i += pbStep) {
+        const p = pts[i];
+        const v = latLonToLocal(p.lat, p.lon, p.ele, origin, exaggerate);
+        let tt = p.dt;
+        if (tt == null && p.time && pts[0].time) tt = (p.time - pts[0].time) / 1000;
+        if (tt == null) tt = (p.dist != null ? p.dist / 3 : samples.length); // ~3 m/s fallback
+        samples.push({ x: v.x, y: v.y, z: v.z, t: tt, dist: p.dist || 0, ele: p.ele });
+      }
+      {
+        const p = pts[pts.length - 1];
+        const v = latLonToLocal(p.lat, p.lon, p.ele, origin, exaggerate);
+        let tt = p.dt;
+        if (tt == null && p.time && pts[0].time) tt = (p.time - pts[0].time) / 1000;
+        if (tt == null) tt = samples.length ? samples[samples.length - 1].t + 1 : 0;
+        samples.push({ x: v.x, y: v.y, z: v.z, t: tt, dist: p.dist || 0, ele: p.ele });
+      }
+      // Ensure monotonic time
+      for (let i = 1; i < samples.length; i++) {
+        if (samples[i].t < samples[i - 1].t) samples[i].t = samples[i - 1].t;
+      }
+      const duration = samples.length ? samples[samples.length - 1].t : 0;
+      pathPlayback.samples = samples;
+      pathPlayback.duration = duration;
+      pathPlayback.t = 0;
+      pathPlayback.playing = false;
+      pathPlayback.lastFrame = null;
+      // Playback marker: smaller than start/end / km labels
+      pathPlayback.markerBaseSize = Math.max(span * 0.005, 0.8);
+
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(pathPlayback.markerBaseSize, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xffffff })
+      );
+      if (samples.length) marker.position.set(samples[0].x, samples[0].y, samples[0].z);
+      meshGroup3d.add(marker);
+      pathPlayback.marker = marker;
+
       scene3d.add(meshGroup3d);
+      positionAtPlaybackTime(0);
+      syncPlaybackUI();
 
       const maxY = Math.max(...pathVecs.map(v => v.y), 10);
       const minY = Math.min(...pathVecs.map(v => v.y), 0);
@@ -2651,8 +2860,39 @@
       camera3d.lookAt(midX, targetY, midZ);
       if (controls3d) controls3d.update();
 
+      pathPlayback.overviewCam = {
+        pos: camera3d.position.clone(),
+        target: controls3d ? controls3d.target.clone() : new THREE.Vector3(midX, targetY, midZ),
+        minDistance: controls3d ? controls3d.minDistance : 15,
+        maxDistance: controls3d ? controls3d.maxDistance : 8000
+      };
+      pathPlayback.viewMode = $('#viewMode3d')?.value || 'overview';
+      applyViewModeCamera();
+
       const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1419';
       scene3d.background = new THREE.Color(bg);
+    }
+
+    function applyViewModeCamera() {
+      if (!camera3d) return;
+      const mode = pathPlayback.viewMode || 'overview';
+      if (mode === 'fpv') {
+        if (controls3d) {
+          controls3d.enabled = false;
+        }
+        positionAtPlaybackTime(pathPlayback.t);
+      } else {
+        if (controls3d) {
+          controls3d.enabled = true;
+          if (pathPlayback.overviewCam) {
+            camera3d.position.copy(pathPlayback.overviewCam.pos);
+            controls3d.target.copy(pathPlayback.overviewCam.target);
+            controls3d.minDistance = pathPlayback.overviewCam.minDistance;
+            controls3d.maxDistance = pathPlayback.overviewCam.maxDistance;
+            controls3d.update();
+          }
+        }
+      }
     }
 
     function resize3D() {
@@ -2665,13 +2905,145 @@
       renderer3d.setSize(w, h);
     }
 
+    function fmtPlayTime(sec) {
+      if (sec == null || isNaN(sec)) return '0:00';
+      sec = Math.max(0, Math.floor(sec));
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      return `${m}:${String(s).padStart(2,'0')}`;
+    }
+
+    function syncPlaybackUI() {
+      const scrub = $('#scrub3d');
+      const timeEl = $('#playbackTime');
+      const playBtn = $('#play3dBtn');
+      const dur = pathPlayback.duration || 0;
+      const cur = Math.min(pathPlayback.t, dur);
+      if (scrub) {
+        scrub.value = dur > 0 ? String(Math.round((cur / dur) * 1000)) : '0';
+      }
+      if (timeEl) timeEl.textContent = `${fmtPlayTime(cur)} / ${fmtPlayTime(dur)}`;
+      if (playBtn) playBtn.textContent = pathPlayback.playing ? t('pause3d') : t('play3d');
+    }
+
+    function positionAtPlaybackTime(timeSec) {
+      const samples = pathPlayback.samples;
+      const marker = pathPlayback.marker;
+      if (!samples.length || !marker) return;
+      const t = Math.max(0, Math.min(timeSec, pathPlayback.duration));
+      pathPlayback.t = t;
+      // Binary search segment
+      let lo = 0, hi = samples.length - 1;
+      while (lo < hi - 1) {
+        const mid = (lo + hi) >> 1;
+        if (samples[mid].t <= t) lo = mid;
+        else hi = mid;
+      }
+      const a = samples[lo];
+      const b = samples[Math.min(lo + 1, samples.length - 1)];
+      const spanT = b.t - a.t;
+      const r = spanT > 1e-6 ? (t - a.t) / spanT : 0;
+      const x = a.x + (b.x - a.x) * r;
+      const y = a.y + (b.y - a.y) * r;
+      const z = a.z + (b.z - a.z) * r;
+      marker.position.set(x, y, z);
+
+      // HUD: current km / total km + elevation
+      const distM = a.dist + ((b.dist != null && a.dist != null) ? (b.dist - a.dist) * r : 0);
+      const eleM = (a.ele != null && b.ele != null)
+        ? a.ele + (b.ele - a.ele) * r
+        : (a.ele != null ? a.ele : b.ele);
+      const totalM = samples[samples.length - 1].dist || 0;
+      update3DHud(distM, totalM, eleM);
+
+      // Chase / third-person: behind & slightly above, looking along the path
+      if ((pathPlayback.viewMode || 'overview') === 'fpv' && camera3d) {
+        let dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        let len = Math.hypot(dx, dy, dz);
+        if (len < 1e-4 && lo > 0) {
+          const prev = samples[lo - 1];
+          dx = a.x - prev.x; dy = a.y - prev.y; dz = a.z - prev.z;
+          len = Math.hypot(dx, dy, dz);
+        }
+        if (len < 1e-4) { dx = 0; dy = 0; dz = -1; len = 1; }
+        dx /= len; dy /= len; dz /= len;
+        // Look further ahead for smoother heading
+        let lookI = Math.min(lo + 8, samples.length - 1);
+        const look = samples[lookI];
+        const back = Math.max(pathPlayback.markerBaseSize * 18, 14); // distance behind runner
+        const height = Math.max(pathPlayback.markerBaseSize * 6, 4.5); // low chase height
+        camera3d.position.set(x - dx * back, y + height, z - dz * back);
+        camera3d.lookAt(look.x, look.y + height * 0.25, look.z);
+        if (controls3d) {
+          controls3d.target.set(x + dx * 6, y + height * 0.2, z + dz * 6);
+        }
+      }
+    }
+
+    function tickPlayback(now) {
+      if (!pathPlayback.playing || !pathPlayback.samples.length) {
+        pathPlayback.lastFrame = now;
+        return;
+      }
+      if (pathPlayback.lastFrame == null) pathPlayback.lastFrame = now;
+      const dt = Math.min(0.1, (now - pathPlayback.lastFrame) / 1000);
+      pathPlayback.lastFrame = now;
+      const speed = pathPlayback.speed || 1;
+      pathPlayback.t += dt * speed;
+      if (pathPlayback.t >= pathPlayback.duration) {
+        pathPlayback.t = pathPlayback.duration;
+        pathPlayback.playing = false;
+        pathPlayback.lastFrame = null;
+      }
+      positionAtPlaybackTime(pathPlayback.t);
+      // Throttle DOM updates ~10fps
+      if (!tickPlayback._lastUi || now - tickPlayback._lastUi > 100) {
+        tickPlayback._lastUi = now;
+        syncPlaybackUI();
+      }
+    }
+
+    function stopPlayback(resetT) {
+      pathPlayback.playing = false;
+      pathPlayback.lastFrame = null;
+      if (resetT) {
+        pathPlayback.t = 0;
+        positionAtPlaybackTime(0);
+      }
+      syncPlaybackUI();
+    }
+
+    function togglePlayback() {
+      if (!pathPlayback.samples.length) return;
+      if (pathPlayback.playing) {
+        pathPlayback.playing = false;
+        pathPlayback.lastFrame = null;
+      } else {
+        if (pathPlayback.t >= pathPlayback.duration - 0.05) pathPlayback.t = 0;
+        pathPlayback.playing = true;
+        pathPlayback.lastFrame = null;
+      }
+      syncPlaybackUI();
+    }
+
     let view3dExpanded = false;
+    function update3DHud(distM, totalM, eleM) {
+      const dEl = $('#hudDist');
+      const tEl = $('#hudDistTotal');
+      const eEl = $('#hudElev');
+      if (dEl) dEl.textContent = ((distM || 0) / 1000).toFixed(2);
+      if (tEl) tEl.textContent = ((totalM || 0) / 1000).toFixed(2);
+      if (eEl) eEl.textContent = eleM != null && isFinite(eleM) ? Math.round(eleM) : '—';
+    }
+
     function set3DExpanded(on) {
-      const wrap = $('#view3dWrap');
+      const panel = $('#view3dPanel');
       const btn = $('#expand3dBtn');
-      if (!wrap) return;
+      if (!panel) return;
       view3dExpanded = !!on;
-      wrap.classList.toggle('is-expanded', view3dExpanded);
+      panel.classList.toggle('is-expanded', view3dExpanded);
       document.body.classList.toggle('view3d-expanded', view3dExpanded);
       if (btn) btn.textContent = view3dExpanded ? t('collapse3d') : t('expand3d');
       // allow layout to settle then resize WebGL canvas
@@ -2834,6 +3206,38 @@
         if (run) update3DView(run);
       });
     }
+
+    // 3D timeline playback
+    $('#play3dBtn')?.addEventListener('click', togglePlayback);
+    $('#speed3dSelect')?.addEventListener('change', (e) => {
+      const v = parseFloat(e.target.value);
+      pathPlayback.speed = isFinite(v) && v > 0 ? v : 1;
+    });
+    {
+      const speedEl = $('#speed3dSelect');
+      if (speedEl) pathPlayback.speed = parseFloat(speedEl.value) || 10;
+    }
+    $('#viewMode3d')?.addEventListener('change', (e) => {
+      pathPlayback.viewMode = e.target.value === 'fpv' ? 'fpv' : 'overview';
+      // Snapshot overview before leaving it
+      if (pathPlayback.viewMode === 'fpv' && camera3d && controls3d && controls3d.enabled) {
+        pathPlayback.overviewCam = {
+          pos: camera3d.position.clone(),
+          target: controls3d.target.clone(),
+          minDistance: controls3d.minDistance,
+          maxDistance: controls3d.maxDistance
+        };
+      }
+      applyViewModeCamera();
+    });
+    $('#scrub3d')?.addEventListener('input', (e) => {
+      const dur = pathPlayback.duration || 0;
+      const ratio = parseInt(e.target.value, 10) / 1000;
+      pathPlayback.playing = false;
+      pathPlayback.lastFrame = null;
+      positionAtPlaybackTime(dur * ratio);
+      syncPlaybackUI();
+    });
 
     // 3D expand / fullscreen
     $('#expand3dBtn')?.addEventListener('click', (e) => {
