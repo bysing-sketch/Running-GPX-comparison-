@@ -2904,21 +2904,21 @@
       meshGroup3d.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: run.color || 0x3b82f6 })));
 
       const startMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(span * 0.012, 12, 12),
+        new THREE.SphereGeometry(span * 0.006, 12, 12),
         new THREE.MeshBasicMaterial({ color: 0x22c55e })
       );
       startMesh.position.copy(pathVecs[0]);
       meshGroup3d.add(startMesh);
 
       const endMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(span * 0.012, 12, 12),
+        new THREE.SphereGeometry(span * 0.006, 12, 12),
         new THREE.MeshBasicMaterial({ color: 0xef4444 })
       );
       endMesh.position.copy(pathVecs[pathVecs.length - 1]);
       meshGroup3d.add(endMesh);
 
       if (run.splits) {
-        const labelSize = Math.max(span * 0.045, 8);
+        const labelSize = Math.max(span * 0.022, 4);
         run.splits.forEach(s => {
           if (s.partial || s.lat == null) return;
           const v = latLonToLocal(s.lat, s.lon, s.ele != null ? s.ele : ele0, origin, exaggerate);
@@ -2958,12 +2958,17 @@
       pathPlayback.t = 0;
       pathPlayback.playing = false;
       pathPlayback.lastFrame = null;
-      // Playback marker: smaller than start/end / km labels
+      // Playback marker — original size, 70% opacity
       pathPlayback.markerBaseSize = Math.max(span * 0.005, 0.8);
 
       const marker = new THREE.Mesh(
         new THREE.SphereGeometry(pathPlayback.markerBaseSize, 12, 12),
-        new THREE.MeshBasicMaterial({ color: 0xffffff })
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.88,
+          depthWrite: false
+        })
       );
       if (samples.length) marker.position.set(samples[0].x, samples[0].y, samples[0].z);
       meshGroup3d.add(marker);
