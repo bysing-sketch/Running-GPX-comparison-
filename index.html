@@ -437,6 +437,7 @@
       overflow: hidden;
       background: #0a0e14;
       border: 1px solid var(--border);
+      cursor: pointer;
     }
     [data-theme="light"] .view3d-wrap { background: #e8eef5; }
     .view3d-wrap canvas { display: block; width: 100% !important; height: 100% !important; }
@@ -453,6 +454,40 @@
       z-index: 2;
     }
     [data-theme="light"] .view3d-hint { background: rgba(255,255,255,0.75); }
+    .view3d-expand-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 3;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.5);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.25rem 0.45rem;
+      font-size: 0.7rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    [data-theme="light"] .view3d-expand-btn { background: rgba(255,255,255,0.85); }
+    .view3d-expand-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .view3d-wrap.is-expanded {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      height: 100vh !important;
+      width: 100vw !important;
+      border-radius: 0;
+      border: none;
+      cursor: default;
+    }
+    .view3d-wrap.is-expanded .view3d-hint { bottom: 16px; left: 16px; }
+    .view3d-wrap.is-expanded .view3d-expand-btn {
+      top: 12px;
+      right: 12px;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.8rem;
+    }
+    body.view3d-expanded { overflow: hidden; }
     .view3d-controls {
       display: flex;
       flex-wrap: wrap;
@@ -696,8 +731,9 @@
           </div>
           <div class="panel">
             <h2 data-i18n="view3d">3D 地形路線</h2>
-            <div class="view3d-wrap" id="view3dWrap">
-              <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放</div>
+            <div class="view3d-wrap" id="view3dWrap" title="">
+              <button type="button" class="view3d-expand-btn" id="expand3dBtn" data-i18n="expand3d">放大</button>
+              <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放 · 撳放大</div>
             </div>
             <div class="view3d-controls">
               <label><span data-i18n="elevScale">海拔誇張</span>
@@ -854,7 +890,9 @@
         overlayElev: '海拔 vs 距離',
         noElevData: '無海拔數據',
         view3d: '3D 地形路線',
-        view3dHint: '拖曳旋轉 · 雙指／滾輪縮放',
+        view3dHint: '拖曳旋轉 · 雙指／滾輪縮放 · 撳放大',
+        expand3d: '放大',
+        collapse3d: '關閉',
         elevScale: '海拔誇張',
         reset3d: '重設視角',
         weatherTemp: '平均氣溫',
@@ -939,7 +977,9 @@
         overlayElev: 'Elevation vs distance',
         noElevData: 'No elevation data',
         view3d: '3D terrain route',
-        view3dHint: 'Drag to rotate · pinch/scroll to zoom',
+        view3dHint: 'Drag to rotate · pinch/scroll to zoom · tap to enlarge',
+        expand3d: 'Expand',
+        collapse3d: 'Close',
         elevScale: 'Elev. exaggeration',
         reset3d: 'Reset view',
         weatherTemp: 'Avg temp',
@@ -2625,6 +2665,25 @@
       renderer3d.setSize(w, h);
     }
 
+    let view3dExpanded = false;
+    function set3DExpanded(on) {
+      const wrap = $('#view3dWrap');
+      const btn = $('#expand3dBtn');
+      if (!wrap) return;
+      view3dExpanded = !!on;
+      wrap.classList.toggle('is-expanded', view3dExpanded);
+      document.body.classList.toggle('view3d-expanded', view3dExpanded);
+      if (btn) btn.textContent = view3dExpanded ? t('collapse3d') : t('expand3d');
+      // allow layout to settle then resize WebGL canvas
+      requestAnimationFrame(() => {
+        resize3D();
+        requestAnimationFrame(resize3D);
+      });
+    }
+    function toggle3DExpanded() {
+      set3DExpanded(!view3dExpanded);
+    }
+
     function removeRun(id) {
       const run = runs.find(r => r.id === id);
       if (run) {
@@ -2775,6 +2834,41 @@
         if (run) update3DView(run);
       });
     }
+
+    // 3D expand / fullscreen
+    $('#expand3dBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggle3DExpanded();
+    });
+    // Double-click map area to expand (single drag still rotates)
+    let _3dPtr = null;
+    const wrap3d = $('#view3dWrap');
+    if (wrap3d) {
+      wrap3d.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.view3d-expand-btn')) return;
+        _3dPtr = { x: e.clientX, y: e.clientY, t: Date.now() };
+      });
+      wrap3d.addEventListener('pointerup', (e) => {
+        if (!_3dPtr || e.target.closest('.view3d-expand-btn')) return;
+        const dx = Math.abs(e.clientX - _3dPtr.x);
+        const dy = Math.abs(e.clientY - _3dPtr.y);
+        const dt = Date.now() - _3dPtr.t;
+        _3dPtr = null;
+        // Short tap without drag → expand (when not already expanded)
+        if (!view3dExpanded && dx < 8 && dy < 8 && dt < 350) {
+          set3DExpanded(true);
+        }
+      });
+      wrap3d.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.view3d-expand-btn')) return;
+        set3DExpanded(true);
+      });
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && view3dExpanded) {
+        set3DExpanded(false);
+      }
+    });
 
     // Settings modal + Karvonen HR
     function saveHrSettings() {
