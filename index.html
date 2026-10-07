@@ -307,6 +307,61 @@
 
     /* Run list */
     .run-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .tag-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.55rem;
+      align-items: center;
+    }
+    .tag-chip {
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 0.22rem 0.65rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      line-height: 1.3;
+    }
+    .tag-chip.active {
+      background: rgba(59,130,246,0.18);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .tag-chip.tag-add {
+      border-style: dashed;
+      color: var(--muted);
+    }
+    .tag-chip .tag-del {
+      margin-left: 0.25rem;
+      opacity: 0.6;
+      border: none;
+      background: none;
+      color: inherit;
+      cursor: pointer;
+      font-size: 0.7rem;
+      padding: 0 0.1rem;
+    }
+    .tag-chip .tag-del:hover { opacity: 1; color: var(--red, #ef4444); }
+    .run-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .run-toolbar select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.2rem 0.35rem;
+      font-size: 0.72rem;
+    }
     .run-item {
       display: flex;
       align-items: center;
@@ -321,6 +376,14 @@
     .run-item:hover { border-color: var(--border); }
     .run-item.active { border-color: var(--accent); background: rgba(59,130,246,0.1); }
     .run-item.hidden-run { opacity: 0.45; }
+    .run-tags-mini {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 0.1rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     .run-color {
       width: 12px;
       height: 12px;
@@ -765,6 +828,17 @@
         <!-- Loaded runs -->
         <div class="panel">
           <h2><span data-i18n="loadedRoutes">已載入路線</span> <span id="runCount" style="color:var(--text);font-weight:600"></span></h2>
+          <div class="tag-bar" id="tagBar"></div>
+          <div class="run-toolbar">
+            <label><span data-i18n="sortBy">排序</span>
+              <select id="sortSelect">
+                <option value="run_desc" data-i18n="sortRunDesc">跑步日期（新→舊）</option>
+                <option value="run_asc" data-i18n="sortRunAsc">跑步日期（舊→新）</option>
+                <option value="upload_desc" data-i18n="sortUploadDesc">上傳時間（新→舊）</option>
+                <option value="upload_asc" data-i18n="sortUploadAsc">上傳時間（舊→新）</option>
+              </select>
+            </label>
+          </div>
           <div class="run-list" id="runList"></div>
         </div>
 
@@ -946,7 +1020,8 @@
           <div data-i18n-html="hrHelpBody"></div>
         </div>
       </div>
-      <div class="modal-foot">
+      <div class="modal-foot" style="justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-secondary" id="clearStorageBtn" data-i18n="clearStorage">清除本機資料</button>
         <button type="button" class="btn" id="settingsSave" data-i18n="settingsSave">儲存</button>
       </div>
     </div>
@@ -962,6 +1037,23 @@
         emptyTitle: '匯入一個或多個 GPX 開始分析',
         emptyHint: '可一次選多個檔，疊喺同一地圖比較<br>支援 Apple Watch / WorkoutGPX / HealthFit',
         loadedRoutes: '已載入路線',
+        tagAll: '全部已跑路線',
+        tagAdd: '＋ 新增標籤',
+        tagNamePrompt: '輸入標籤名稱（例如：小欖環回）',
+        tagExists: '已有相同名稱的標籤',
+        tagDeleteConfirm: '刪除此標籤？路線本身會保留。',
+        sortBy: '排序',
+        sortRunDesc: '跑步日期（新→舊）',
+        sortRunAsc: '跑步日期（舊→新）',
+        sortUploadDesc: '上傳時間（新→舊）',
+        sortUploadAsc: '上傳時間（舊→新）',
+        assignTag: '加入目前標籤',
+        removeFromTag: '移出目前標籤',
+        persistRestored: '已還原本機保存的 {n} 條紀錄',
+        persistFail: '無法寫入本機儲存（空間可能不足）',
+        clearAllConfirm: '清除畫面上全部路線？\n（本機已保存的資料不會自動刪除；請逐條刪除或用清除本機）',
+        clearStorage: '清除本機資料',
+        clearStorageConfirm: '確定刪除本機所有已保存路線與標籤？此操作無法還原。',
         tabDetail: '詳情',
         tabCompare: '比較',
         overview: '總覽',
@@ -1061,6 +1153,23 @@
         emptyTitle: 'Import one or more GPX files to start',
         emptyHint: 'Select multiple files to overlay and compare on the map<br>Supports Apple Watch / WorkoutGPX / HealthFit',
         loadedRoutes: 'Loaded routes',
+        tagAll: 'All runs',
+        tagAdd: '+ New tag',
+        tagNamePrompt: 'Tag name (e.g. Shing Mun loop)',
+        tagExists: 'A tag with this name already exists',
+        tagDeleteConfirm: 'Delete this tag? Runs are kept.',
+        sortBy: 'Sort',
+        sortRunDesc: 'Run date (new → old)',
+        sortRunAsc: 'Run date (old → new)',
+        sortUploadDesc: 'Upload time (new → old)',
+        sortUploadAsc: 'Upload time (old → new)',
+        assignTag: 'Add to current tag',
+        removeFromTag: 'Remove from current tag',
+        persistRestored: 'Restored {n} saved run(s)',
+        persistFail: 'Could not save locally (storage may be full)',
+        clearAllConfirm: 'Clear all runs from the screen?\n(Saved data stays until you delete runs or clear storage.)',
+        clearStorage: 'Clear saved data',
+        clearStorageConfirm: 'Delete all locally saved runs and tags? This cannot be undone.',
         tabDetail: 'Detail',
         tabCompare: 'Compare',
         overview: 'Overview',
@@ -1189,6 +1298,7 @@
       localStorage.setItem('gpx-lang', lang);
       applyStaticI18n();
       syncHrInputs();
+      renderTagBar();
       // Re-render dynamic content
       if (runs.length) {
         renderRunList();
@@ -1201,6 +1311,8 @@
           rebuildMapLayers();
         }
         renderCompare();
+      } else {
+        renderRunList();
       }
     }
 
@@ -1683,10 +1795,259 @@
     }
 
     // ========== State ==========
-    let runs = []; // { id, name, color, points, splits, summary, visible, layer, markersLayer }
+    let runs = []; // { id, name, color, points, splits, summary, visible, tagIds, uploadedAt, layer, markersLayer }
     let selectedId = null;
     let nextColorIdx = 0;
     let map, allBounds = null;
+    const TAG_ALL = '__all__';
+    let tags = []; // { id, name, createdAt }
+    let activeTagId = TAG_ALL;
+    let sortMode = localStorage.getItem('gpx-sort') || 'run_desc';
+
+    // ---------- IndexedDB persistence ----------
+    const IDB_NAME = 'gpx-run-analyzer';
+    const IDB_VER = 1;
+    let idb = null;
+
+    function openIDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, IDB_VER);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('runs')) db.createObjectStore('runs', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('tags')) db.createObjectStore('tags', { keyPath: 'id' });
+        };
+        req.onsuccess = () => { idb = req.result; resolve(idb); };
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function idbPut(store, value) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return reject(new Error('no db'));
+        const tx = idb.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function idbDelete(store, key) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return reject(new Error('no db'));
+        const tx = idb.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function idbGetAll(store) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return resolve([]);
+        const tx = idb.transaction(store, 'readonly');
+        const req = tx.objectStore(store).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function idbClear(store) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return resolve();
+        const tx = idb.transaction(store, 'readwrite');
+        tx.objectStore(store).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function serializeRun(run) {
+      return {
+        id: run.id,
+        name: run.name,
+        color: run.color,
+        visible: !!run.visible,
+        tagIds: Array.isArray(run.tagIds) ? run.tagIds.slice() : [],
+        uploadedAt: run.uploadedAt || Date.now(),
+        points: run.points.map(p => ({
+          lat: p.lat,
+          lon: p.lon,
+          ele: p.ele != null ? p.ele : null,
+          time: p.time instanceof Date ? p.time.toISOString() : (p.time || null),
+          hr: p.hr != null ? p.hr : null,
+          dist: p.dist,
+          dt: p.dt
+        }))
+      };
+    }
+
+    function reviveRun(raw) {
+      const points = (raw.points || []).map(p => ({
+        lat: p.lat,
+        lon: p.lon,
+        ele: p.ele,
+        time: p.time ? new Date(p.time) : null,
+        hr: p.hr,
+        dist: p.dist,
+        dt: p.dt
+      }));
+      // Ensure dist/dt if missing
+      if (points.length && points[0].dist == null) {
+        // recompute basic cumulative distance
+        const R = 6371000;
+        let dist = 0;
+        points[0].dist = 0;
+        for (let i = 1; i < points.length; i++) {
+          const a = points[i - 1], b = points[i];
+          const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180;
+          const dφ = (b.lat - a.lat) * Math.PI / 180;
+          const dλ = (b.lon - a.lon) * Math.PI / 180;
+          const h = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+          dist += 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+          b.dist = dist;
+        }
+      }
+      if (points.length && points[0].dt == null && points[0].time) {
+        const t0 = points[0].time.getTime();
+        points.forEach(p => {
+          if (p.time) p.dt = (p.time.getTime() - t0) / 1000;
+        });
+      }
+      const splits = computeSplits(points, 1000);
+      const summary = summarize(points);
+      return {
+        id: raw.id,
+        name: raw.name,
+        color: raw.color,
+        points,
+        splits,
+        summary,
+        visible: raw.visible !== false,
+        tagIds: Array.isArray(raw.tagIds) ? raw.tagIds.slice() : [],
+        uploadedAt: raw.uploadedAt || Date.now(),
+        weather: null,
+        layer: null,
+        markersLayer: null
+      };
+    }
+
+    async function persistRun(run) {
+      try {
+        await idbPut('runs', serializeRun(run));
+      } catch (e) {
+        console.warn(e);
+        showError(t('persistFail'));
+      }
+    }
+
+    async function persistTag(tag) {
+      try { await idbPut('tags', tag); } catch (e) { console.warn(e); }
+    }
+
+    async function deletePersistedRun(id) {
+      try { await idbDelete('runs', id); } catch (e) { console.warn(e); }
+    }
+
+    async function deletePersistedTag(id) {
+      try { await idbDelete('tags', id); } catch (e) { console.warn(e); }
+    }
+
+    function getFilteredSortedRuns() {
+      let list = runs.slice();
+      if (activeTagId !== TAG_ALL) {
+        list = list.filter(r => (r.tagIds || []).includes(activeTagId));
+      }
+      const runTime = (r) => {
+        const st = r.summary && r.summary.startTime;
+        return st instanceof Date ? st.getTime() : (st ? new Date(st).getTime() : 0);
+      };
+      list.sort((a, b) => {
+        if (sortMode === 'upload_asc') return (a.uploadedAt || 0) - (b.uploadedAt || 0);
+        if (sortMode === 'upload_desc') return (b.uploadedAt || 0) - (a.uploadedAt || 0);
+        if (sortMode === 'run_asc') return runTime(a) - runTime(b);
+        return runTime(b) - runTime(a); // run_desc default
+      });
+      return list;
+    }
+
+    function renderTagBar() {
+      const bar = $('#tagBar');
+      if (!bar) return;
+      const chips = [];
+      chips.push(`<button type="button" class="tag-chip ${activeTagId === TAG_ALL ? 'active' : ''}" data-tag="${TAG_ALL}">${t('tagAll')}</button>`);
+      tags.forEach(tag => {
+        chips.push(`<button type="button" class="tag-chip ${activeTagId === tag.id ? 'active' : ''}" data-tag="${tag.id}">
+          ${escapeHtml(tag.name)}
+          <span class="tag-del" data-del-tag="${tag.id}" title="✕">×</span>
+        </button>`);
+      });
+      chips.push(`<button type="button" class="tag-chip tag-add" data-tag-add="1">${t('tagAdd')}</button>`);
+      bar.innerHTML = chips.join('');
+      bar.querySelectorAll('[data-tag]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          if (e.target.closest('[data-del-tag]')) return;
+          activeTagId = btn.dataset.tag;
+          localStorage.setItem('gpx-active-tag', activeTagId);
+          renderTagBar();
+          renderRunList();
+          // Visibility for compare: only filtered runs shown on map if we hide others?
+          // Spec: tag filters list; for compare show runs in that tag.
+          // Map shows visible runs that pass filter — hide others from map temporarily.
+          applyTagVisibilityToMap();
+          if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+        });
+      });
+      bar.querySelectorAll('[data-del-tag]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.delTag;
+          if (!confirm(t('tagDeleteConfirm'))) return;
+          tags = tags.filter(x => x.id !== id);
+          runs.forEach(r => {
+            r.tagIds = (r.tagIds || []).filter(tid => tid !== id);
+            persistRun(r);
+          });
+          await deletePersistedTag(id);
+          if (activeTagId === id) activeTagId = TAG_ALL;
+          renderTagBar();
+          renderRunList();
+          applyTagVisibilityToMap();
+        });
+      });
+      bar.querySelector('[data-tag-add]')?.addEventListener('click', async () => {
+        const name = prompt(t('tagNamePrompt'));
+        if (!name || !name.trim()) return;
+        const trimmed = name.trim();
+        if (tags.some(x => x.name === trimmed)) {
+          showError(t('tagExists'));
+          return;
+        }
+        const tag = { id: 'tag_' + Date.now().toString(36), name: trimmed, createdAt: Date.now() };
+        tags.push(tag);
+        await persistTag(tag);
+        activeTagId = tag.id;
+        localStorage.setItem('gpx-active-tag', activeTagId);
+        renderTagBar();
+        renderRunList();
+        applyTagVisibilityToMap();
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function applyTagVisibilityToMap() {
+      // Map still respects run.visible; compare uses getFilteredSortedRuns for which to include.
+      // Rebuild map with only filtered+visible runs by temporarily treating unfiltered as not on map.
+      rebuildMapLayers();
+    }
+
+    function runsForMapAndCompare() {
+      const filtered = new Set(getFilteredSortedRuns().map(r => r.id));
+      return runs.filter(r => r.visible && filtered.has(r.id));
+    }
 
     // ========== Map ==========
     function initMap() {
@@ -1709,8 +2070,9 @@
       const showMarkers = $('#showMarkers')?.checked !== false;
       const showOtherMarkers = $('#showOtherMarkers')?.checked !== false;
 
+      const filteredIds = new Set(getFilteredSortedRuns().map(r => r.id));
       runs.forEach(run => {
-        if (!run.visible) return;
+        if (!run.visible || !filteredIds.has(run.id)) return;
 
         const latlngs = run.points.map(p => [p.lat, p.lon]);
         const isSelected = run.id === selectedId;
@@ -1824,20 +2186,27 @@
 
     function renderRunList() {
       const list = $('#runList');
-      $('#runCount').textContent = `(${runs.length})`;
-      list.innerHTML = runs.map(r => `
+      if (!list) return;
+      const filtered = getFilteredSortedRuns();
+      $('#runCount').textContent = `(${filtered.length}/${runs.length})`;
+      list.innerHTML = filtered.map(r => {
+        const tagNames = (r.tagIds || []).map(tid => tags.find(x => x.id === tid)?.name).filter(Boolean);
+        const inCurrent = activeTagId !== TAG_ALL && (r.tagIds || []).includes(activeTagId);
+        return `
         <div class="run-item ${r.id === selectedId ? 'active' : ''} ${r.visible ? '' : 'hidden-run'}" data-id="${r.id}">
           <div class="run-color" style="background:${r.color}"></div>
           <div class="run-info">
-            <div class="run-name">${r.name}</div>
+            <div class="run-name">${escapeHtml(r.name)}</div>
             <div class="run-meta">${fmt.date(r.summary.startTime)} · ${fmt.dist(r.summary.dist)} · ${fmt.time(r.summary.duration)}</div>
+            ${tagNames.length ? `<div class="run-tags-mini">${tagNames.map(escapeHtml).join(' · ')}</div>` : ''}
           </div>
           <div class="run-actions">
+            ${activeTagId !== TAG_ALL ? `<button class="icon-btn" data-action="tag" title="${inCurrent ? t('removeFromTag') : t('assignTag')}">${inCurrent ? '🏷' : '＋'}</button>` : ''}
             <button class="icon-btn" data-action="toggle" title="${t('showHide')}">${r.visible ? '👁' : '👁‍🗨'}</button>
             <button class="icon-btn" data-action="remove" title="${t('remove')}">✕</button>
           </div>
-        </div>
-      `).join('');
+        </div>`;
+      }).join('');
 
       list.querySelectorAll('.run-item').forEach(el => {
         el.addEventListener('click', (e) => {
@@ -1847,8 +2216,22 @@
             const run = runs.find(r => r.id === id);
             if (run) {
               run.visible = !run.visible;
+              persistRun(run);
               rebuildMapLayers();
               renderRunList();
+              if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+            }
+            e.stopPropagation();
+          } else if (action === 'tag') {
+            const run = runs.find(r => r.id === id);
+            if (run && activeTagId !== TAG_ALL) {
+              const set = new Set(run.tagIds || []);
+              if (set.has(activeTagId)) set.delete(activeTagId);
+              else set.add(activeTagId);
+              run.tagIds = [...set];
+              persistRun(run);
+              renderRunList();
+              applyTagVisibilityToMap();
               if ($('#tab-compare')?.classList.contains('active')) renderCompare();
             }
             e.stopPropagation();
@@ -2210,7 +2593,7 @@
       const W = rect.width, H = rect.height;
       ctx.clearRect(0, 0, W, H);
 
-      const visible = runs.filter(r => r.visible);
+      const visible = runsForMapAndCompare();
       const series = visible.map(r => ({
         run: r,
         data: sampleSeries(r, mode)
@@ -2417,7 +2800,7 @@
     }
 
     function exportCompareCsv() {
-      const visible = runs.filter(r => r.visible);
+      const visible = runsForMapAndCompare();
       if (!visible.length) return;
 
       const rows = [];
@@ -2514,7 +2897,7 @@
     }
 
     function renderCompare() {
-      const visible = runs.filter(r => r.visible);
+      const visible = runsForMapAndCompare();
       if (visible.length === 0) return;
 
       // Summary comparison
@@ -3208,14 +3591,17 @@
         if (run.markersLayer) map.removeLayer(run.markersLayer);
       }
       runs = runs.filter(r => r.id !== id);
+      deletePersistedRun(id);
       if (selectedId === id) {
-        selectedId = runs.length ? runs[runs.length - 1].id : null;
+        const filtered = getFilteredSortedRuns();
+        selectedId = filtered.length ? filtered[0].id : (runs.length ? runs[runs.length - 1].id : null);
       }
       if (runs.length === 0) {
         $('#content').style.display = 'none';
         $('#emptyState').style.display = 'block';
         $('#clearBtn').disabled = true;
-      } else {
+        dispose3DMeshes();
+      } else if (selectedId) {
         selectRun(selectedId);
         renderCompare();
       }
@@ -3223,16 +3609,20 @@
       rebuildMapLayers();
     }
 
-    function addRun(name, points) {
+    function addRun(name, points, opts = {}) {
       const splits = computeSplits(points, 1000);
       const summary = summarize(points);
-      const id = 'run_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6);
-      const color = RUN_COLORS[nextColorIdx % RUN_COLORS.length];
+      const id = opts.id || ('run_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
+      const color = opts.color || RUN_COLORS[nextColorIdx % RUN_COLORS.length];
       nextColorIdx++;
+      const tagIds = Array.isArray(opts.tagIds) ? opts.tagIds.slice() : [];
+      if (activeTagId !== TAG_ALL && !tagIds.includes(activeTagId)) tagIds.push(activeTagId);
       const run = {
         id, name: shortName(name), color,
         points, splits, summary,
-        visible: true,
+        visible: opts.visible !== false,
+        tagIds,
+        uploadedAt: opts.uploadedAt || Date.now(),
         weather: null,
         layer: null, markersLayer: null
       };
@@ -3243,6 +3633,8 @@
       $('#content').style.display = 'block';
       $('#clearBtn').disabled = false;
 
+      persistRun(run);
+      renderTagBar();
       renderRunList();
       selectRun(id);
       renderCompare();
@@ -3250,6 +3642,7 @@
     }
 
     function clearAll() {
+      if (runs.length && !confirm(t('clearAllConfirm'))) return;
       runs.forEach(r => {
         if (r.layer) map.removeLayer(r.layer);
         if (r.markersLayer) map.removeLayer(r.markersLayer);
@@ -3262,6 +3655,7 @@
       $('#emptyState').style.display = 'block';
       $('#clearBtn').disabled = true;
       $('#fileInput').value = '';
+      renderRunList();
     }
 
     function loadFiles(fileList) {
@@ -3448,6 +3842,29 @@
     $('#hrSettingsLink')?.addEventListener('click', openSettings);
     $('#settingsClose')?.addEventListener('click', closeSettings);
     $('#settingsSave')?.addEventListener('click', saveHrSettings);
+    $('#clearStorageBtn')?.addEventListener('click', async () => {
+      if (!confirm(t('clearStorageConfirm'))) return;
+      try {
+        await idbClear('runs');
+        await idbClear('tags');
+      } catch (e) { console.warn(e); }
+      runs.forEach(r => {
+        if (r.layer) map.removeLayer(r.layer);
+        if (r.markersLayer) map.removeLayer(r.markersLayer);
+      });
+      runs = [];
+      tags = [];
+      selectedId = null;
+      activeTagId = TAG_ALL;
+      nextColorIdx = 0;
+      dispose3DMeshes();
+      $('#content').style.display = 'none';
+      $('#emptyState').style.display = 'block';
+      $('#clearBtn').disabled = true;
+      renderTagBar();
+      renderRunList();
+      closeSettings();
+    });
     $('#settingsModal')?.addEventListener('click', (e) => {
       if (e.target === $('#settingsModal')) closeSettings();
     });
@@ -3455,11 +3872,54 @@
       if (e.key === 'Escape') closeSettings();
     });
 
+    // Sort control
+    const sortSel = $('#sortSelect');
+    if (sortSel) {
+      sortSel.value = sortMode;
+      sortSel.addEventListener('change', () => {
+        sortMode = sortSel.value;
+        localStorage.setItem('gpx-sort', sortMode);
+        renderRunList();
+      });
+    }
+
+    async function restoreFromStorage() {
+      try {
+        await openIDB();
+        const [rawRuns, rawTags] = await Promise.all([idbGetAll('runs'), idbGetAll('tags')]);
+        tags = (rawTags || []).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        const savedTag = localStorage.getItem('gpx-active-tag');
+        if (savedTag === TAG_ALL || tags.some(x => x.id === savedTag)) activeTagId = savedTag || TAG_ALL;
+        else activeTagId = TAG_ALL;
+
+        if (rawRuns && rawRuns.length) {
+          runs = rawRuns.map(reviveRun);
+          nextColorIdx = runs.length;
+          selectedId = runs[0]?.id || null;
+          $('#emptyState').style.display = 'none';
+          $('#content').style.display = 'block';
+          $('#clearBtn').disabled = false;
+          renderTagBar();
+          renderRunList();
+          if (selectedId) selectRun(selectedId);
+          renderCompare();
+          runs.forEach(r => fetchWeatherForRun(r));
+          showError(t('persistRestored', { n: runs.length }));
+        } else {
+          renderTagBar();
+        }
+      } catch (e) {
+        console.warn('restore failed', e);
+        renderTagBar();
+      }
+    }
+
     // Init
     applyTheme();
     applyStaticI18n();
     syncHrInputs();
     initMap();
+    restoreFromStorage();
     window.addEventListener('resize', () => {
       if (map) map.invalidateSize();
       const run = runs.find(r => r.id === selectedId);
