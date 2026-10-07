@@ -2084,8 +2084,8 @@
     }
 
     function runsForMapAndCompare() {
-      const filtered = new Set(getFilteredSortedRuns().map(r => r.id));
-      return runs.filter(r => r.visible && filtered.has(r.id));
+      // Same tag filter + sort order as the sidebar list (only visible runs)
+      return getFilteredSortedRuns().filter(r => r.visible);
     }
 
     // ========== Map ==========
@@ -3965,6 +3965,7 @@
         sortMode = sortSel.value;
         localStorage.setItem('gpx-sort', sortMode);
         renderRunList();
+        if ($('#tab-compare')?.classList.contains('active')) renderCompare();
       });
     }
 
