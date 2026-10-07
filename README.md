@@ -1,4 +1,4 @@
-# GPX Run Route Analyzer · 跑步路線分析
+# GPX Run Route Analyzer · 跑步路線分析 (Built by Grok)
 
 ---
 
@@ -6,12 +6,11 @@
 
 Client-side web app for importing Apple Watch / workout **GPX** files, analysing splits, heart rate and elevation, and comparing multiple runs on the same route.
 
-**Deploy:** static host (e.g. Vercel) — only needs `index.html` (optional `vercel.json`).
-
 ### Features
 
 #### Import & multi-run
 - Import one or more `.gpx` files (drag-and-drop or file picker)
+- Tag function for grouping same/similar route(s)
 - Overlay multiple tracks on one Leaflet map (colour-coded)
 - Show / hide tracks and km markers per route
 - Selected route: solid km markers; others: semi-transparent (toggle)
@@ -84,26 +83,11 @@ No build step: open or host `index.html`.
 
 - GPX is parsed **only in your browser**.
 - Weather and geocoding call public APIs with run time + approximate location.
-- HR settings are stored in `localStorage` on this device only.
-
-### Limits
-
-- Consumer GPS elevation can be noisy on flat routes.
-- Open-Meteo weather is an **hourly model grid**, not an official HKO station name.
-- The 3D “map” is a **flat tile plane** under the track, not full 3D buildings or DEM terrain.
-- Tile providers may rate-limit heavy use; the **Grid** basemap works without tiles.
-
-### Deploy
-
-```bash
-# Example: Vercel — put index.html at project root
-vercel
-```
-
-Replace `index.html` on GitHub and push to update an existing Vercel project.
+- GRX uploaded reocrd and HR settings are stored in `IndexedDB` on this device only.
 
 ### Credits
 
+- All lines written by Grok AI
 - Map data © OpenStreetMap contributors (2D map)
 - 3D basemap tiles © Esri and respective data providers
 - Weather © Open-Meteo
@@ -114,12 +98,11 @@ Replace `index.html` on GitHub and push to update an existing Vercel project.
 
 純前端單頁應用：匯入 Apple Watch／運動 **GPX**，分析分段、心率與海拔，並在地圖與 3D 視圖比較多次跑步。
 
-**部署：** 靜態託管（例如 Vercel）— 只需 `index.html`（可選 `vercel.json`）。
-
 ### 功能
 
 #### 匯入與多檔比較
 - 匯入一個或多個 `.gpx`（拖放或選檔）
+- 標籤功能,將相同/接近路徑跑步訓練結合, 以方便作出比較
 - 多條路線疊加於同一 Leaflet 地圖（分色）
 - 可顯示／隱藏各路線軌跡與公里標記
 - 選中路線：實色公里標記；其他：半透明（可開關）
@@ -192,7 +175,7 @@ Replace `index.html` on GitHub and push to update an existing Vercel project.
 
 - GPX **只在你的瀏覽器** 內解析。
 - 天氣／地理編碼會呼叫公開 API，並傳送跑步時間與大概位置。
-- 心率設定只存在本機 `localStorage`。
+- 上傳之GPX文件及心率設定只以`IndexedDB`形式儲存在本機 。
 
 ### 已知限制
 
@@ -201,17 +184,9 @@ Replace `index.html` on GitHub and push to update an existing Vercel project.
 - 3D「地圖」是軌跡下的 **平面圖磚**，不是完整 3D 建築或地形模型。
 - 圖磚供應商可能限流；**格網** 底圖不依賴圖磚。
 
-### 部署
-
-```bash
-# 範例：Vercel — 將 index.html 放在專案根目錄
-vercel
-```
-
-在 GitHub 取代 `index.html` 後 push，即可更新現有 Vercel 專案。
-
 ### 致謝
 
+- 全部程式碼以Grok AI編寫
 - 地圖資料 © OpenStreetMap 貢獻者（2D 地圖）
 - 3D 底圖圖磚 © Esri 及相關資料提供者
 - 天氣資料 © Open-Meteo
