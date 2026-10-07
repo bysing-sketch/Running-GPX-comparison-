@@ -384,6 +384,17 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .run-section-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin: 0.45rem 0 0.25rem;
+      font-weight: 600;
+    }
+    .run-section-label:first-child { margin-top: 0; }
+    .run-item.out-of-tag {
+      opacity: 0.85;
+      border-style: dashed;
+    }
     .run-color {
       width: 12px;
       height: 12px;
@@ -1049,6 +1060,9 @@
         sortUploadAsc: '上傳時間（舊→新）',
         assignTag: '加入目前標籤',
         removeFromTag: '移出目前標籤',
+        tagInSection: '此標籤內',
+        tagOutSection: '未加入此標籤（撳 ＋ 加入）',
+        tagEmptyIn: '尚未有路線。可喺下面加入，或喺此標籤下重新匯入。',
         persistRestored: '已還原本機保存的 {n} 條紀錄',
         persistFail: '無法寫入本機儲存（空間可能不足）',
         clearAllConfirm: '清除畫面上全部路線？\n（本機已保存的資料不會自動刪除；請逐條刪除或用清除本機）',
@@ -1165,6 +1179,9 @@
         sortUploadAsc: 'Upload time (old → new)',
         assignTag: 'Add to current tag',
         removeFromTag: 'Remove from current tag',
+        tagInSection: 'In this tag',
+        tagOutSection: 'Not in this tag (tap + to add)',
+        tagEmptyIn: 'No runs yet. Add from below, or import while this tag is selected.',
         persistRestored: 'Restored {n} saved run(s)',
         persistFail: 'Could not save locally (storage may be full)',
         clearAllConfirm: 'Clear all runs from the screen?\n(Saved data stays until you delete runs or clear storage.)',
@@ -2184,16 +2201,23 @@
       setTimeout(() => { el.style.display = 'none'; }, 5000);
     }
 
-    function renderRunList() {
-      const list = $('#runList');
-      if (!list) return;
-      const filtered = getFilteredSortedRuns();
-      $('#runCount').textContent = `(${filtered.length}/${runs.length})`;
-      list.innerHTML = filtered.map(r => {
-        const tagNames = (r.tagIds || []).map(tid => tags.find(x => x.id === tid)?.name).filter(Boolean);
-        const inCurrent = activeTagId !== TAG_ALL && (r.tagIds || []).includes(activeTagId);
-        return `
-        <div class="run-item ${r.id === selectedId ? 'active' : ''} ${r.visible ? '' : 'hidden-run'}" data-id="${r.id}">
+    function sortRunsList(list) {
+      const runTime = (r) => {
+        const st = r.summary && r.summary.startTime;
+        return st instanceof Date ? st.getTime() : (st ? new Date(st).getTime() : 0);
+      };
+      return list.slice().sort((a, b) => {
+        if (sortMode === 'upload_asc') return (a.uploadedAt || 0) - (b.uploadedAt || 0);
+        if (sortMode === 'upload_desc') return (b.uploadedAt || 0) - (a.uploadedAt || 0);
+        if (sortMode === 'run_asc') return runTime(a) - runTime(b);
+        return runTime(b) - runTime(a);
+      });
+    }
+
+    function runItemHtml(r, { inCurrent, outOfTag }) {
+      const tagNames = (r.tagIds || []).map(tid => tags.find(x => x.id === tid)?.name).filter(Boolean);
+      return `
+        <div class="run-item ${r.id === selectedId ? 'active' : ''} ${r.visible ? '' : 'hidden-run'} ${outOfTag ? 'out-of-tag' : ''}" data-id="${r.id}">
           <div class="run-color" style="background:${r.color}"></div>
           <div class="run-info">
             <div class="run-name">${escapeHtml(r.name)}</div>
@@ -2206,7 +2230,29 @@
             <button class="icon-btn" data-action="remove" title="${t('remove')}">✕</button>
           </div>
         </div>`;
-      }).join('');
+    }
+
+    function renderRunList() {
+      const list = $('#runList');
+      if (!list) return;
+      const filtered = getFilteredSortedRuns();
+      $('#runCount').textContent = `(${filtered.length}/${runs.length})`;
+
+      let html = '';
+      if (activeTagId === TAG_ALL) {
+        html = sortRunsList(runs).map(r => runItemHtml(r, { inCurrent: false, outOfTag: false })).join('');
+      } else {
+        const inTag = sortRunsList(runs.filter(r => (r.tagIds || []).includes(activeTagId)));
+        const outTag = sortRunsList(runs.filter(r => !(r.tagIds || []).includes(activeTagId)));
+        html += `<div class="run-section-label">${t('tagInSection')} (${inTag.length})</div>`;
+        if (!inTag.length) html += `<div class="run-section-label" style="font-weight:400">${t('tagEmptyIn')}</div>`;
+        else html += inTag.map(r => runItemHtml(r, { inCurrent: true, outOfTag: false })).join('');
+        if (outTag.length) {
+          html += `<div class="run-section-label">${t('tagOutSection')} (${outTag.length})</div>`;
+          html += outTag.map(r => runItemHtml(r, { inCurrent: false, outOfTag: true })).join('');
+        }
+      }
+      list.innerHTML = html;
 
       list.querySelectorAll('.run-item').forEach(el => {
         el.addEventListener('click', (e) => {
