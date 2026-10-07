@@ -395,6 +395,26 @@
       opacity: 0.85;
       border-style: dashed;
     }
+    .run-section-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 0.4rem 0.55rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 0.45rem 0 0.25rem;
+      text-align: left;
+    }
+    .run-section-toggle:hover { border-color: var(--accent); color: var(--text); }
+    .run-section-toggle .chev { opacity: 0.7; font-weight: 400; }
+    .run-out-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .run-out-list[hidden] { display: none; }
     .run-color {
       width: 12px;
       height: 12px;
@@ -1061,8 +1081,9 @@
         assignTag: '加入目前標籤',
         removeFromTag: '移出目前標籤',
         tagInSection: '此標籤內',
-        tagOutSection: '未加入此標籤（撳 ＋ 加入）',
-        tagEmptyIn: '尚未有路線。可喺下面加入，或喺此標籤下重新匯入。',
+        tagOutSection: '未加入此標籤',
+        tagOutHint: '撳展開，用 ＋ 加入',
+        tagEmptyIn: '尚未有路線。可展開下面加入，或喺此標籤下重新匯入。',
         persistRestored: '已還原本機保存的 {n} 條紀錄',
         persistFail: '無法寫入本機儲存（空間可能不足）',
         clearAllConfirm: '清除畫面上全部路線？\n（本機已保存的資料不會自動刪除；請逐條刪除或用清除本機）',
@@ -1180,8 +1201,9 @@
         assignTag: 'Add to current tag',
         removeFromTag: 'Remove from current tag',
         tagInSection: 'In this tag',
-        tagOutSection: 'Not in this tag (tap + to add)',
-        tagEmptyIn: 'No runs yet. Add from below, or import while this tag is selected.',
+        tagOutSection: 'Not in this tag',
+        tagOutHint: 'Expand, then tap + to add',
+        tagEmptyIn: 'No runs yet. Expand the section below to add, or import while this tag is selected.',
         persistRestored: 'Restored {n} saved run(s)',
         persistFail: 'Could not save locally (storage may be full)',
         clearAllConfirm: 'Clear all runs from the screen?\n(Saved data stays until you delete runs or clear storage.)',
@@ -2248,11 +2270,28 @@
         if (!inTag.length) html += `<div class="run-section-label" style="font-weight:400">${t('tagEmptyIn')}</div>`;
         else html += inTag.map(r => runItemHtml(r, { inCurrent: true, outOfTag: false })).join('');
         if (outTag.length) {
-          html += `<div class="run-section-label">${t('tagOutSection')} (${outTag.length})</div>`;
+          // Collapsed by default so long libraries don't dominate the list
+          html += `<button type="button" class="run-section-toggle" id="outTagToggle" aria-expanded="false">
+            <span>${t('tagOutSection')} (${outTag.length}) · ${t('tagOutHint')}</span>
+            <span class="chev">▼</span>
+          </button>`;
+          html += `<div class="run-out-list" id="outTagList" hidden>`;
           html += outTag.map(r => runItemHtml(r, { inCurrent: false, outOfTag: true })).join('');
+          html += `</div>`;
         }
       }
       list.innerHTML = html;
+
+      const outToggle = list.querySelector('#outTagToggle');
+      const outList = list.querySelector('#outTagList');
+      if (outToggle && outList) {
+        outToggle.addEventListener('click', () => {
+          const open = outList.hidden;
+          outList.hidden = !open;
+          outToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+          outToggle.querySelector('.chev').textContent = open ? '▲' : '▼';
+        });
+      }
 
       list.querySelectorAll('.run-item').forEach(el => {
         el.addEventListener('click', (e) => {
