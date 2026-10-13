@@ -3094,7 +3094,10 @@
       lastFrame: null,
       markerBaseSize: 1,
       viewMode: 'overview',
-      overviewCam: null // { pos, target } snapshot
+      overviewCam: null, // { pos, target } snapshot
+      doneLine: null,
+      remainLine: null,
+      routeColor: 0x3b82f6
     };
 
     function makeKmSprite(label, size) {
@@ -3126,6 +3129,8 @@
     function dispose3DMeshes() {
       stopPlayback(false);
       pathPlayback.marker = null;
+      pathPlayback.doneLine = null;
+      pathPlayback.remainLine = null;
       pathPlayback.samples = [];
       pathPlayback.duration = 0;
       pathPlayback.t = 0;
@@ -3378,8 +3383,19 @@
         })));
       }
 
-      const lineGeo = new THREE.BufferGeometry().setFromPoints(pathVecs);
-      meshGroup3d.add(new THREE.Line(lineGeo, new THREE.LineBasicMaterial({ color: run.color || 0x3b82f6 })));
+      const routeColor = run.color || 0x3b82f6;
+      pathPlayback.routeColor = routeColor;
+      // Full route dim (ahead of marker); done segment solid — updated in positionAtPlaybackTime
+      const remainGeo = new THREE.BufferGeometry().setFromPoints(pathVecs);
+      const remainLine = new THREE.Line(remainGeo, new THREE.LineBasicMaterial({
+        color: routeColor, transparent: true, opacity: 0.28
+      }));
+      meshGroup3d.add(remainLine);
+      pathPlayback.remainLine = remainLine;
+      const doneGeo = new THREE.BufferGeometry().setFromPoints(pathVecs.slice(0, 1));
+      const doneLine = new THREE.Line(doneGeo, new THREE.LineBasicMaterial({ color: routeColor }));
+      meshGroup3d.add(doneLine);
+      pathPlayback.doneLine = doneLine;
 
       const startMesh = new THREE.Mesh(
         new THREE.SphereGeometry(span * 0.006, 12, 12),
@@ -3562,6 +3578,19 @@
       const y = a.y + (b.y - a.y) * r;
       const z = a.z + (b.z - a.z) * r;
       marker.position.set(x, y, z);
+
+      // Progress colouring: behind marker = solid, ahead = dim
+      if (pathPlayback.doneLine && pathPlayback.remainLine) {
+        const donePts = [];
+        for (let i = 0; i <= lo; i++) donePts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
+        donePts.push(new THREE.Vector3(x, y, z));
+        const remainPts = [new THREE.Vector3(x, y, z)];
+        for (let i = hi; i < samples.length; i++) remainPts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
+        pathPlayback.doneLine.geometry.dispose();
+        pathPlayback.doneLine.geometry = new THREE.BufferGeometry().setFromPoints(donePts.length >= 2 ? donePts : [new THREE.Vector3(x,y,z), new THREE.Vector3(x,y,z)]);
+        pathPlayback.remainLine.geometry.dispose();
+        pathPlayback.remainLine.geometry = new THREE.BufferGeometry().setFromPoints(remainPts.length >= 2 ? remainPts : [new THREE.Vector3(x,y,z), new THREE.Vector3(x,y,z)]);
+      }
 
       // HUD: current km / total km + elevation
       const distM = a.dist + ((b.dist != null && a.dist != null) ? (b.dist - a.dist) * r : 0);
