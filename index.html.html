@@ -1,0 +1,4050 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>GPX 跑步路線分析</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.124.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.124.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    :root, [data-theme="dark"] {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --surface2: #243044;
+      --border: #2d3a4f;
+      --text: #e8eef5;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --green: #22c55e;
+      --orange: #f59e0b;
+      --red: #ef4444;
+      --hr-low: #22c55e;
+      --hr-mid: #f59e0b;
+      --hr-high: #ef4444;
+      --chart-grid: rgba(45,58,79,0.8);
+      --popup-text: #555;
+    }
+    [data-theme="light"] {
+      --bg: #f4f6f9;
+      --surface: #ffffff;
+      --surface2: #f0f3f7;
+      --border: #d0d7e2;
+      --text: #1a2332;
+      --muted: #5a6a7e;
+      --accent: #2563eb;
+      --accent-hover: #1d4ed8;
+      --green: #16a34a;
+      --orange: #d97706;
+      --red: #dc2626;
+      --hr-low: #16a34a;
+      --hr-mid: #d97706;
+      --hr-high: #dc2626;
+      --chart-grid: rgba(208,215,226,0.9);
+      --popup-text: #333;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+    }
+    header h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    header h1 span { color: var(--accent); }
+    .upload-zone {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .btn {
+      background: var(--accent);
+      color: white;
+      border: none;
+      padding: 0.5rem 0.95rem;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-sm {
+      padding: 0.25rem 0.5rem;
+      font-size: 0.75rem;
+      border-radius: 6px;
+    }
+    #fileInput { display: none; }
+    main {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 0;
+      max-width: 1500px;
+      margin: 0 auto;
+    }
+    @media (min-width: 960px) {
+      main { grid-template-columns: 1fr 400px; }
+    }
+    #map {
+      height: 50vh;
+      min-height: 300px;
+      background: var(--surface);
+      z-index: 1;
+    }
+    @media (min-width: 960px) {
+      #map { height: calc(100vh - 58px); min-height: 480px; }
+    }
+    .sidebar {
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      overflow-y: auto;
+      max-height: calc(100vh - 58px);
+      padding: 0.85rem;
+    }
+    .panel {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.85rem;
+      margin-bottom: 0.85rem;
+    }
+    .panel h2 {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 0.65rem;
+      font-weight: 600;
+    }
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.55rem;
+    }
+    .stat {
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 0.55rem 0.65rem;
+    }
+    .stat-label {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-bottom: 0.1rem;
+    }
+    .stat-value {
+      font-size: 1.05rem;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-value small {
+      font-size: 0.7rem;
+      font-weight: 400;
+      color: var(--muted);
+    }
+    .empty-state {
+      text-align: center;
+      padding: 2.5rem 1.2rem;
+      color: var(--muted);
+    }
+    .empty-state p { font-size: 0.9rem; margin-bottom: 0.4rem; }
+    .empty-state .hint { font-size: 0.78rem; opacity: 0.75; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+    th {
+      text-align: left;
+      color: var(--muted);
+      font-weight: 500;
+      padding: 0.35rem 0.3rem;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      white-space: nowrap;
+    }
+    td {
+      padding: 0.4rem 0.3rem;
+      border-bottom: 1px solid rgba(45, 58, 79, 0.5);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    tr:hover td { background: rgba(59, 130, 246, 0.08); }
+    tr.active td { background: rgba(59, 130, 246, 0.15); }
+    .km-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 0 4px;
+    }
+    .hr-bar {
+      display: flex;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 0.3rem;
+      background: var(--bg);
+    }
+    .hr-bar span { height: 100%; }
+    .hr-legend {
+      display: flex;
+      gap: 0.65rem;
+      margin-top: 0.4rem;
+      font-size: 0.68rem;
+      color: var(--muted);
+      flex-wrap: wrap;
+    }
+    .hr-legend i {
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      border-radius: 2px;
+      margin-right: 0.2rem;
+      vertical-align: middle;
+    }
+    .chart-wrap {
+      height: 110px;
+      margin-top: 0.4rem;
+      position: relative;
+    }
+    .chart-wrap.overlay {
+      height: 160px;
+    }
+    .chart-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem 0.75rem;
+      margin-top: 0.45rem;
+      font-size: 0.7rem;
+      color: var(--muted);
+    }
+    .chart-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+    }
+    .chart-legend i {
+      display: inline-block;
+      width: 14px;
+      height: 3px;
+      border-radius: 1px;
+    }
+    canvas { width: 100% !important; height: 100% !important; }
+    .panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.65rem;
+    }
+    .panel-head h2 { margin-bottom: 0; }
+    .controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.55rem;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      cursor: pointer;
+    }
+    .toggle input { accent-color: var(--accent); }
+    .leaflet-popup-content { font-size: 0.82rem; margin: 0.45rem 0.65rem; color: var(--popup-text); }
+    .popup-title { font-weight: 600; margin-bottom: 0.2rem; }
+    .popup-row { color: var(--popup-text); font-size: 0.78rem; }
+    .error-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--red);
+      color: #fca5a5;
+      padding: 0.6rem 0.85rem;
+      border-radius: 8px;
+      margin-bottom: 0.85rem;
+      font-size: 0.8rem;
+      display: none;
+    }
+    .split-pace-fast { color: var(--green); }
+    .split-pace-slow { color: var(--orange); }
+
+    /* Run list */
+    .run-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .tag-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin-bottom: 0.55rem;
+      align-items: center;
+    }
+    .tag-chip {
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      border-radius: 999px;
+      padding: 0.22rem 0.65rem;
+      font-size: 0.72rem;
+      cursor: pointer;
+      line-height: 1.3;
+    }
+    .tag-chip.active {
+      background: rgba(59,130,246,0.18);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .tag-chip.tag-add {
+      border-style: dashed;
+      color: var(--muted);
+    }
+    .tag-chip .tag-del {
+      margin-left: 0.25rem;
+      opacity: 0.6;
+      border: none;
+      background: none;
+      color: inherit;
+      cursor: pointer;
+      font-size: 0.7rem;
+      padding: 0 0.1rem;
+    }
+    .tag-chip .tag-del:hover { opacity: 1; color: var(--red, #ef4444); }
+    .run-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-bottom: 0.5rem;
+      align-items: center;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .run-toolbar select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.2rem 0.35rem;
+      font-size: 0.72rem;
+    }
+    .run-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 0.5rem 0.6rem;
+      border: 1px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .run-item:hover { border-color: var(--border); }
+    .run-item.active { border-color: var(--accent); background: rgba(59,130,246,0.1); }
+    .run-item.hidden-run { opacity: 0.45; }
+    .run-tags-mini {
+      font-size: 0.65rem;
+      color: var(--muted);
+      margin-top: 0.1rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .run-section-label {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin: 0.45rem 0 0.25rem;
+      font-weight: 600;
+    }
+    .run-section-label:first-child { margin-top: 0; }
+    .run-item.out-of-tag {
+      opacity: 0.85;
+      border-style: dashed;
+    }
+    .run-section-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--muted);
+      border-radius: 8px;
+      padding: 0.4rem 0.55rem;
+      font-size: 0.7rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin: 0.45rem 0 0.25rem;
+      text-align: left;
+    }
+    .run-section-toggle:hover { border-color: var(--accent); color: var(--text); }
+    .run-section-toggle .chev { opacity: 0.7; font-weight: 400; }
+    .run-out-list { display: flex; flex-direction: column; gap: 0.4rem; }
+    .run-out-list[hidden] { display: none; }
+    .run-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.3);
+    }
+    .run-info { flex: 1; min-width: 0; }
+    .run-name {
+      font-size: 0.8rem;
+      font-weight: 500;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .run-meta {
+      font-size: 0.68rem;
+      color: var(--muted);
+      margin-top: 0.1rem;
+    }
+    .run-actions { display: flex; gap: 0.25rem; flex-shrink: 0; }
+    .icon-btn {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 0.2rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      line-height: 1;
+    }
+    .icon-btn:hover { color: var(--text); background: var(--surface2); }
+
+    /* Compare table */
+    .compare-wrap { overflow-x: auto; }
+    .compare-table th.color-dot::before {
+      content: '';
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px;
+      vertical-align: middle;
+      background: var(--dot-color, #888);
+    }
+    .best { color: var(--green); font-weight: 600; }
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 0.65rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.35rem;
+    }
+    .tab {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 0.3rem 0.65rem;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    .tab:hover { color: var(--text); background: var(--bg); }
+    .tab.active {
+      color: var(--text);
+      background: var(--accent);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    .lang-switch {
+      display: flex;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .lang-switch button {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.35rem 0.55rem;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+    }
+    .lang-switch button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+    .lang-switch button:hover:not(.active) {
+      color: var(--text);
+      background: rgba(59,130,246,0.15);
+    }
+    .theme-btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1rem;
+      width: 34px;
+      height: 32px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+    }
+    .theme-btn:hover { border-color: var(--accent); }
+    .view3d-wrap {
+      position: relative;
+      height: 280px;
+      border-radius: 10px;
+      overflow: hidden;
+      background: #0a0e14;
+      border: 1px solid var(--border);
+      cursor: pointer;
+    }
+    [data-theme="light"] .view3d-wrap { background: #e8eef5; }
+    .view3d-wrap canvas { display: block; width: 100% !important; height: 100% !important; }
+    .view3d-hint {
+      position: absolute;
+      left: 8px;
+      bottom: 8px;
+      font-size: 0.65rem;
+      color: var(--muted);
+      background: rgba(0,0,0,0.45);
+      padding: 0.2rem 0.45rem;
+      border-radius: 6px;
+      pointer-events: none;
+      z-index: 2;
+    }
+    [data-theme="light"] .view3d-hint { background: rgba(255,255,255,0.75); }
+    .view3d-expand-btn {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 3;
+      border: 1px solid var(--border);
+      background: rgba(0,0,0,0.5);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.25rem 0.45rem;
+      font-size: 0.7rem;
+      cursor: pointer;
+      line-height: 1;
+    }
+    [data-theme="light"] .view3d-expand-btn { background: rgba(255,255,255,0.85); }
+    .view3d-expand-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .view3d-panel {
+      position: relative;
+    }
+    .view3d-dock {
+      margin-top: 0.35rem;
+    }
+    .view3d-hud {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      z-index: 3;
+      font-size: 0.68rem;
+      line-height: 1.45;
+      color: rgba(255,255,255,0.85);
+      background: rgba(0,0,0,0.4);
+      padding: 0.3rem 0.5rem;
+      border-radius: 6px;
+      pointer-events: none;
+      font-variant-numeric: tabular-nums;
+    }
+    [data-theme="light"] .view3d-hud {
+      color: rgba(20,30,40,0.85);
+      background: rgba(255,255,255,0.75);
+    }
+    .view3d-hud strong { font-weight: 600; color: inherit; }
+    .view3d-panel.is-expanded {
+      position: fixed;
+      inset: 0;
+      z-index: 10000;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      border: none;
+      border-radius: 0;
+    }
+    .view3d-panel.is-expanded .view3d-wrap {
+      flex: 1 1 auto;
+      height: auto !important;
+      min-height: 0;
+      border-radius: 0;
+      border: none;
+      cursor: default;
+    }
+    .view3d-panel.is-expanded .view3d-dock {
+      flex: 0 0 auto;
+      margin: 0;
+      /* Extra bottom inset so scrubber stays above iPad home / app-switch gesture zone */
+      padding: 0.55rem 0.75rem calc(1.35rem + env(safe-area-inset-bottom, 0px));
+      padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+      padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+    }
+    .view3d-panel.is-expanded .playback-bar {
+      padding-bottom: 0.15rem;
+    }
+    .view3d-panel.is-expanded .playback-bar #scrub3d {
+      /* Larger touch target; keep thumb away from screen edge */
+      min-height: 28px;
+    }
+    .view3d-panel.is-expanded .view3d-hint { bottom: 16px; left: 16px; }
+    .view3d-panel.is-expanded .view3d-hud { top: 14px; left: 14px; }
+    .view3d-panel.is-expanded .view3d-expand-btn {
+      top: 12px;
+      right: 12px;
+      padding: 0.4rem 0.65rem;
+      font-size: 0.8rem;
+    }
+    body.view3d-expanded { overflow: hidden; }
+    .view3d-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      margin-top: 0.45rem;
+      align-items: center;
+    }
+    .view3d-controls label {
+      font-size: 0.72rem;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    .view3d-controls input[type="range"] { width: 90px; accent-color: var(--accent); }
+    .playback-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.45rem 0.55rem;
+      margin-top: 0.55rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+    }
+    .playback-bar #scrub3d {
+      flex: 1 1 120px;
+      min-width: 100px;
+      accent-color: var(--accent);
+    }
+    .playback-speed {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+    .playback-speed select {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.2rem 0.3rem;
+      font-size: 0.75rem;
+    }
+    .playback-time {
+      font-size: 0.72rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .weather-block {
+      margin-top: 0.85rem;
+      padding-top: 0.75rem;
+      border-top: 1px solid var(--border);
+    }
+    .weather-block-title {
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      margin-bottom: 0.2rem;
+    }
+    .weather-block-source {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 0.55rem;
+      line-height: 1.4;
+    }
+    .weather-block .stats-grid {
+      margin-top: 0;
+    }
+    .panel-head-hr {
+      margin-bottom: 0.45rem;
+    }
+    .panel-head-hr h2 { margin-bottom: 0; }
+    .hr-settings-link {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 0.7rem;
+      cursor: pointer;
+      padding: 0.15rem 0.25rem;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+      white-space: nowrap;
+    }
+    .hr-settings-link:hover { color: var(--accent); }
+    .hr-settings {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+    .hr-settings label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .hr-settings label span:first-child {
+      min-width: 5.5rem;
+      color: var(--muted);
+      font-size: 0.8rem;
+    }
+    .hr-settings input[type="number"] {
+      width: 5rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 0.35rem 0.45rem;
+      font-size: 0.9rem;
+    }
+    .hr-settings .unit {
+      color: var(--muted);
+      font-size: 0.75rem;
+    }
+    .hr-settings-hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.4;
+      margin: 0.35rem 0 0.75rem;
+    }
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .modal-backdrop[hidden] { display: none; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: min(420px, 100%);
+      max-height: 90vh;
+      overflow: auto;
+      box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-head h2 {
+      font-size: 1rem;
+      font-weight: 600;
+      margin: 0;
+    }
+    .modal-body {
+      padding: 1rem;
+    }
+    .modal-body h3 {
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin: 0 0 0.65rem;
+      color: var(--text);
+    }
+    .settings-help {
+      margin-top: 0.85rem;
+      padding: 0.75rem 0.85rem;
+      background: var(--surface2);
+      border-radius: 8px;
+      border: 1px solid var(--border);
+    }
+    .settings-help h4 {
+      font-size: 0.8rem;
+      margin: 0 0 0.45rem;
+      color: var(--text);
+    }
+    .settings-help p, .settings-help li {
+      font-size: 0.75rem;
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0 0 0.4rem;
+    }
+    .settings-help ul {
+      margin: 0 0 0.4rem 1.1rem;
+      padding: 0;
+    }
+    .settings-help strong { color: var(--text); font-weight: 600; }
+    .modal-foot {
+      padding: 0.75rem 1rem 1rem;
+      display: flex;
+      justify-content: flex-end;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🏃 <span>GPX</span> <span data-i18n="appTitle">跑步路線分析</span></h1>
+    <div class="upload-zone">
+      <div class="lang-switch" id="langSwitch">
+        <button type="button" data-lang="zh" class="active">中</button>
+        <button type="button" data-lang="en">EN</button>
+      </div>
+      <button type="button" class="theme-btn" id="themeBtn" title="Theme">🌙</button>
+      <button type="button" class="theme-btn" id="settingsBtn" title="Settings" data-i18n-title="settings">⚙️</button>
+      <label class="btn" for="fileInput" data-i18n="importBtn">＋ 匯入 GPX</label>
+      <input type="file" id="fileInput" accept=".gpx,application/gpx+xml,text/xml" multiple />
+      <button class="btn btn-secondary" id="clearBtn" disabled data-i18n="clearAll">全部清除</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="map"></div>
+    <aside class="sidebar">
+      <div class="error-banner" id="errorBanner"></div>
+
+      <div id="emptyState" class="empty-state">
+        <p data-i18n="emptyTitle">匯入一個或多個 GPX 開始分析</p>
+        <p class="hint" data-i18n-html="emptyHint">可一次選多個檔，疊喺同一地圖比較<br>支援 Apple Watch / WorkoutGPX / HealthFit</p>
+      </div>
+
+      <div id="content" style="display:none">
+        <!-- Loaded runs -->
+        <div class="panel">
+          <h2><span data-i18n="loadedRoutes">已載入路線</span> <span id="runCount" style="color:var(--text);font-weight:600"></span></h2>
+          <div class="tag-bar" id="tagBar"></div>
+          <div class="run-toolbar">
+            <label><span data-i18n="sortBy">排序</span>
+              <select id="sortSelect">
+                <option value="run_desc" data-i18n="sortRunDesc">跑步日期（新→舊）</option>
+                <option value="run_asc" data-i18n="sortRunAsc">跑步日期（舊→新）</option>
+                <option value="upload_desc" data-i18n="sortUploadDesc">上傳時間（新→舊）</option>
+                <option value="upload_asc" data-i18n="sortUploadAsc">上傳時間（舊→新）</option>
+              </select>
+            </label>
+          </div>
+          <div class="run-list" id="runList"></div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active" data-tab="detail" data-i18n="tabDetail">詳情</button>
+          <button class="tab" data-tab="compare" data-i18n="tabCompare">比較</button>
+        </div>
+
+        <!-- Detail tab (selected run) -->
+        <div class="tab-panel active" id="tab-detail">
+          <div class="panel">
+            <h2><span data-i18n="overview">總覽</span> <span id="detailName" style="text-transform:none;letter-spacing:0;color:var(--text);font-weight:500"></span></h2>
+            <div class="stats-grid" id="summaryStats"></div>
+            <div class="weather-block" id="weatherBlock"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head panel-head-hr">
+              <h2 data-i18n="hrDistribution">心率分佈</h2>
+              <button type="button" class="hr-settings-link" id="hrSettingsLink" data-i18n="hrSettingsReminder">設定心率</button>
+            </div>
+            <div class="hr-bar" id="hrBar"></div>
+            <div class="hr-legend" id="hrLegend"></div>
+            <div class="chart-wrap"><canvas id="hrChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="elevProfile">海拔剖面</h2>
+            <div class="chart-wrap overlay"><canvas id="elevChart"></canvas></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="kmSplits">每公里分段</h2>
+            <div class="controls">
+              <label class="toggle"><input type="checkbox" id="showMarkers" checked /> <span data-i18n="kmMarkers">公里標記</span></label>
+              <label class="toggle"><input type="checkbox" id="showOtherMarkers" checked /> <span data-i18n="otherMarkers">其他路線標記</span></label>
+              <label class="toggle"><input type="checkbox" id="showTracks" checked /> <span data-i18n="tracks">路線</span></label>
+            </div>
+            <div style="overflow-x:auto">
+              <table>
+                <thead>
+                  <tr>
+                    <th data-i18n="thKm">公里</th>
+                    <th data-i18n="thArrival">到達</th>
+                    <th data-i18n="thPace">配速</th>
+                    <th data-i18n="thAvgHr">平均心率</th>
+                    <th data-i18n="thElev">爬升</th>
+                  </tr>
+                </thead>
+                <tbody id="splitsBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="view3d">3D 地形路線</h2>
+            <div class="view3d-panel" id="view3dPanel">
+              <div class="view3d-wrap" id="view3dWrap" title="">
+                <button type="button" class="view3d-expand-btn" id="expand3dBtn" data-i18n="expand3d">放大</button>
+                <div class="view3d-hud" id="view3dHud">
+                  <div><span data-i18n="hudDist">距離</span> <strong id="hudDist">0.00</strong> / <span id="hudDistTotal">0.00</span> km</div>
+                  <div><span data-i18n="hudElev">海拔</span> <strong id="hudElev">—</strong> m</div>
+                </div>
+                <div class="view3d-hint" data-i18n="view3dHint">拖曳旋轉 · 雙指／滾輪縮放 · 撳放大</div>
+              </div>
+              <div class="view3d-dock">
+                <div class="view3d-controls">
+                  <label><span data-i18n="elevScale">海拔誇張</span>
+                    <input type="range" id="elevScale" min="1" max="12" step="0.5" value="4" />
+                  </label>
+                  <label class="playback-speed">
+                    <span data-i18n="viewMode3d">視角</span>
+                    <select id="viewMode3d">
+                      <option value="overview" data-i18n="viewOverview">俯瞰</option>
+                      <option value="fpv" data-i18n="viewFpv">跟隨視角</option>
+                    </select>
+                  </label>
+                  <label class="playback-speed">
+                    <span data-i18n="mapStyle3d">底圖</span>
+                    <select id="mapStyle3d">
+                      <option value="street" data-i18n="mapStreet">街道</option>
+                      <option value="sat" data-i18n="mapSat">衛星</option>
+                      <option value="none" data-i18n="mapNone">格網</option>
+                    </select>
+                  </label>
+                  <button type="button" class="btn btn-secondary btn-sm" id="reset3dBtn" data-i18n="reset3d">重設視角</button>
+                </div>
+                <div class="playback-bar" id="playbackBar">
+                  <button type="button" class="btn btn-secondary btn-sm" id="play3dBtn" data-i18n="play3d">播放</button>
+                  <label class="playback-speed">
+                    <span data-i18n="speed3d">倍速</span>
+                    <select id="speed3dSelect">
+                      <option value="1">1×</option>
+                      <option value="2">2×</option>
+                      <option value="5">5×</option>
+                      <option value="10" selected>10×</option>
+                      <option value="50">50×</option>
+                      <option value="100">100×</option>
+                    </select>
+                  </label>
+                  <input type="range" id="scrub3d" min="0" max="1000" value="0" step="1" />
+                  <span class="playback-time" id="playbackTime">0:00 / 0:00</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Compare tab -->
+        <div class="tab-panel" id="tab-compare">
+          <div class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="compareOverview">總覽比較</h2>
+              <button type="button" class="btn btn-secondary btn-sm" id="exportCsvBtn" data-i18n="exportCsv">匯出 CSV</button>
+            </div>
+            <div class="compare-wrap">
+              <table class="compare-table" id="compareSummary">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="overlayPace">配速 vs 距離</h2>
+            <div class="chart-wrap overlay"><canvas id="paceOverlayChart"></canvas></div>
+            <div class="chart-legend" id="paceOverlayLegend"></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="overlayHr">心率 vs 距離</h2>
+            <div class="chart-wrap overlay"><canvas id="hrOverlayChart"></canvas></div>
+            <div class="chart-legend" id="hrOverlayLegend"></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="overlayElev">海拔 vs 距離</h2>
+            <div class="chart-wrap overlay"><canvas id="elevOverlayChart"></canvas></div>
+            <div class="chart-legend" id="elevOverlayLegend"></div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="comparePace">每公里配速比較</h2>
+            <div class="compare-wrap">
+              <table class="compare-table" id="compareSplits">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <h2 data-i18n="compareHr">每公里心率比較</h2>
+            <div class="compare-wrap">
+              <table class="compare-table" id="compareHR">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- Settings modal -->
+  <div class="modal-backdrop" id="settingsModal" hidden>
+    <div class="modal" role="dialog" aria-labelledby="settingsTitle">
+      <div class="modal-head">
+        <h2 id="settingsTitle" data-i18n="settingsTitle">設定</h2>
+        <button type="button" class="icon-btn" id="settingsClose" aria-label="Close">✕</button>
+      </div>
+      <div class="modal-body">
+        <h3 data-i18n="hrSettingsTitle">心率區間（Karvonen）</h3>
+        <div class="hr-settings modal-hr-settings">
+          <label><span data-i18n="hrMax">最大心率</span>
+            <input type="number" id="hrMaxInput" min="120" max="230" step="1" />
+            <span class="unit">bpm</span>
+          </label>
+          <label><span data-i18n="hrRest">安靜心率</span>
+            <input type="number" id="hrRestInput" min="30" max="120" step="1" />
+            <span class="unit">bpm</span>
+          </label>
+        </div>
+        <p class="hr-settings-hint" id="hrZoneHintSettings"></p>
+        <div class="settings-help">
+          <h4 data-i18n="hrHelpTitle">點樣設定？</h4>
+          <div data-i18n-html="hrHelpBody"></div>
+        </div>
+      </div>
+      <div class="modal-foot" style="justify-content:space-between;gap:0.5rem;flex-wrap:wrap">
+        <button type="button" class="btn btn-secondary" id="clearStorageBtn" data-i18n="clearStorage">清除本機資料</button>
+        <button type="button" class="btn" id="settingsSave" data-i18n="settingsSave">儲存</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ========== i18n ==========
+    const I18N = {
+      zh: {
+        appTitle: '跑步路線分析',
+        importBtn: '＋ 匯入 GPX',
+        clearAll: '全部清除',
+        emptyTitle: '匯入一個或多個 GPX 開始分析',
+        emptyHint: '可一次選多個檔，疊喺同一地圖比較<br>支援 Apple Watch / WorkoutGPX / HealthFit',
+        loadedRoutes: '已載入路線',
+        tagAll: '全部已跑路線',
+        tagAdd: '＋ 新增標籤',
+        tagNamePrompt: '輸入標籤名稱（例如：小欖環回）',
+        tagExists: '已有相同名稱的標籤',
+        tagDeleteConfirm: '刪除此標籤？路線本身會保留。',
+        sortBy: '排序',
+        sortRunDesc: '跑步日期（新→舊）',
+        sortRunAsc: '跑步日期（舊→新）',
+        sortUploadDesc: '上傳時間（新→舊）',
+        sortUploadAsc: '上傳時間（舊→新）',
+        assignTag: '加入目前標籤',
+        removeFromTag: '移出目前標籤',
+        tagInSection: '此標籤內',
+        tagOutSection: '未加入此標籤',
+        tagOutHint: '撳展開，用 ＋ 加入',
+        tagEmptyIn: '尚未有路線。可展開下面加入，或喺此標籤下重新匯入。',
+        persistRestored: '已還原本機保存的 {n} 條紀錄',
+        persistFail: '無法寫入本機儲存（空間可能不足）',
+        clearAllConfirm: '清除畫面上全部路線？\n（本機已保存的資料不會自動刪除；請逐條刪除或用清除本機）',
+        clearStorage: '清除本機資料',
+        clearStorageConfirm: '確定刪除本機所有已保存路線與標籤？此操作無法還原。',
+        tabDetail: '詳情',
+        tabCompare: '比較',
+        overview: '總覽',
+        hrDistribution: '心率分佈',
+        kmSplits: '每公里分段',
+        kmMarkers: '公里標記',
+        otherMarkers: '其他路線標記',
+        tracks: '路線',
+        thKm: '公里',
+        thArrival: '到達',
+        thPace: '配速',
+        thAvgHr: '平均心率',
+        thElev: '爬升',
+        compareOverview: '總覽比較',
+        comparePace: '每公里配速比較',
+        compareHr: '每公里心率比較',
+        date: '日期',
+        startTime: '開始時間',
+        totalDist: '總距離',
+        elapsed: '經過時間',
+        avgPace: '平均配速',
+        points: '軌跡點',
+        avgHr: '平均心率',
+        maxHr: '最高心率',
+        elevGain: '爬升',
+        elevLoss: '下降',
+        start: '開始',
+        dist: '距離',
+        noHrData: '呢個 GPX 冇心率數據',
+        noHrChart: '無心率數據',
+        startPoint: '起點',
+        endPoint: '終點',
+        kmN: '第 {n} 公里',
+        arrival: '到達',
+        splitTime: '本段',
+        elevChange: '海拔變化',
+        showHide: '顯示/隱藏',
+        remove: '移除',
+        errBadGpx: 'GPX 檔案格式錯誤，無法解析',
+        errNoTrack: 'GPX 入面搵唔到軌跡點 (trkpt)',
+        errFewPoints: '軌跡點太少，無法分析',
+        errSelectGpx: '請選擇 .gpx 檔案',
+        errReadFail: '讀取 {name} 失敗',
+        pageTitle: 'GPX 跑步路線分析',
+        exportCsv: '匯出 CSV',
+        overlayPace: '配速 vs 距離',
+        overlayHr: '心率 vs 距離',
+        themeToggle: '切換主題',
+        noOverlayData: '冇足夠數據可繪圖',
+        elevProfile: '海拔剖面',
+        overlayElev: '海拔 vs 距離',
+        noElevData: '無海拔數據',
+        view3d: '3D 地形路線',
+        view3dHint: '拖曳旋轉 · 雙指／滾輪縮放 · 撳放大',
+        expand3d: '放大',
+        collapse3d: '關閉',
+        elevScale: '海拔誇張',
+        reset3d: '重設視角',
+        play3d: '播放',
+        pause3d: '暫停',
+        speed3d: '倍速',
+        viewMode3d: '視角',
+        viewOverview: '俯瞰',
+        viewFpv: '跟隨視角',
+        hudDist: '距離',
+        hudElev: '海拔',
+        mapStyle3d: '底圖',
+        mapStreet: '街道',
+        mapSat: '衛星',
+        mapNone: '格網',
+        weatherTemp: '平均氣溫',
+        weatherHumidity: '平均濕度',
+        weatherWind: '平均風速',
+        weatherLoading: '天氣載入中…',
+        weatherNA: '—',
+        weatherSamples: '（{n} 個時段）',
+        weatherSection: '天氣資訊',
+        weatherSourceArchive: 'Open-Meteo · ERA5 再分析網格',
+        weatherSourceForecast: 'Open-Meteo · 預報／近期歸檔',
+        weatherGrid: '網格點 {lat}, {lon}',
+        weatherNear: '{place} 附近',
+        hrMax: '最大心率',
+        hrRest: '安靜心率',
+        hrKarvonenHint: 'Karvonen：易 &lt;60% · 中 60–80% · 高 &gt;80% 心率儲備 → {lo} / {hi} bpm',
+        hrSettingsReminder: '設定心率',
+        settings: '設定',
+        settingsTitle: '設定',
+        hrSettingsTitle: '心率區間（Karvonen）',
+        settingsSave: '儲存',
+        hrHelpTitle: '點樣設定最大／安靜心率？',
+        hrHelpBody: '<p><strong>安靜心率（Resting HR）</strong></p><ul><li>起床後、未起身前量一次（坐定或躺住）</li><li>用 Watch／胸帶睇 1–3 分鐘平均，取較低穩定值</li><li>一般人約 50–70；經常運動可能更低</li></ul><p><strong>最大心率（Max HR）</strong></p><ul><li>最準：實驗室或場地漸增負荷測試</li><li>實用：回顧過去最辛苦訓練／比賽嘅<strong>最高心率</strong>（可再加少少緩衝）</li><li>粗估：220 − 年齡（只供參考，誤差可以好大）</li></ul><p>設定會存喺呢部裝置嘅瀏覽器，唔使每次重設。</p>',
+      },
+      en: {
+        appTitle: 'Run Route Analyzer',
+        importBtn: '+ Import GPX',
+        clearAll: 'Clear all',
+        emptyTitle: 'Import one or more GPX files to start',
+        emptyHint: 'Select multiple files to overlay and compare on the map<br>Supports Apple Watch / WorkoutGPX / HealthFit',
+        loadedRoutes: 'Loaded routes',
+        tagAll: 'All runs',
+        tagAdd: '+ New tag',
+        tagNamePrompt: 'Tag name (e.g. Shing Mun loop)',
+        tagExists: 'A tag with this name already exists',
+        tagDeleteConfirm: 'Delete this tag? Runs are kept.',
+        sortBy: 'Sort',
+        sortRunDesc: 'Run date (new → old)',
+        sortRunAsc: 'Run date (old → new)',
+        sortUploadDesc: 'Upload time (new → old)',
+        sortUploadAsc: 'Upload time (old → new)',
+        assignTag: 'Add to current tag',
+        removeFromTag: 'Remove from current tag',
+        tagInSection: 'In this tag',
+        tagOutSection: 'Not in this tag',
+        tagOutHint: 'Expand, then tap + to add',
+        tagEmptyIn: 'No runs yet. Expand the section below to add, or import while this tag is selected.',
+        persistRestored: 'Restored {n} saved run(s)',
+        persistFail: 'Could not save locally (storage may be full)',
+        clearAllConfirm: 'Clear all runs from the screen?\n(Saved data stays until you delete runs or clear storage.)',
+        clearStorage: 'Clear saved data',
+        clearStorageConfirm: 'Delete all locally saved runs and tags? This cannot be undone.',
+        tabDetail: 'Detail',
+        tabCompare: 'Compare',
+        overview: 'Overview',
+        hrDistribution: 'Heart rate',
+        kmSplits: 'Km splits',
+        kmMarkers: 'Km markers',
+        otherMarkers: 'Other route markers',
+        tracks: 'Tracks',
+        thKm: 'Km',
+        thArrival: 'Arrival',
+        thPace: 'Pace',
+        thAvgHr: 'Avg HR',
+        thElev: 'Elev',
+        compareOverview: 'Overview comparison',
+        comparePace: 'Pace by km',
+        compareHr: 'HR by km',
+        date: 'Date',
+        startTime: 'Start time',
+        totalDist: 'Distance',
+        elapsed: 'Elapsed',
+        avgPace: 'Avg pace',
+        points: 'Track points',
+        avgHr: 'Avg HR',
+        maxHr: 'Max HR',
+        elevGain: 'Elev gain',
+        elevLoss: 'Elev loss',
+        start: 'Start',
+        dist: 'Distance',
+        noHrData: 'No heart rate data in this GPX',
+        noHrChart: 'No HR data',
+        startPoint: 'Start',
+        endPoint: 'Finish',
+        kmN: 'Km {n}',
+        arrival: 'Arrival',
+        splitTime: 'Split',
+        elevChange: 'Elevation',
+        showHide: 'Show/Hide',
+        remove: 'Remove',
+        errBadGpx: 'Invalid GPX file',
+        errNoTrack: 'No track points found in GPX',
+        errFewPoints: 'Not enough track points',
+        errSelectGpx: 'Please select a .gpx file',
+        errReadFail: 'Failed to read {name}',
+        pageTitle: 'GPX Run Route Analyzer',
+        exportCsv: 'Export CSV',
+        overlayPace: 'Pace vs distance',
+        overlayHr: 'HR vs distance',
+        themeToggle: 'Toggle theme',
+        noOverlayData: 'Not enough data to chart',
+        elevProfile: 'Elevation profile',
+        overlayElev: 'Elevation vs distance',
+        noElevData: 'No elevation data',
+        view3d: '3D terrain route',
+        view3dHint: 'Drag to rotate · pinch/scroll to zoom · tap to enlarge',
+        expand3d: 'Expand',
+        collapse3d: 'Close',
+        elevScale: 'Elev. exaggeration',
+        reset3d: 'Reset view',
+        play3d: 'Play',
+        pause3d: 'Pause',
+        speed3d: 'Speed',
+        viewMode3d: 'View',
+        viewOverview: 'Overview',
+        viewFpv: 'Follow cam',
+        hudDist: 'Dist',
+        hudElev: 'Elev',
+        mapStyle3d: 'Base',
+        mapStreet: 'Street',
+        mapSat: 'Satellite',
+        mapNone: 'Grid',
+        weatherTemp: 'Avg temp',
+        weatherHumidity: 'Avg humidity',
+        weatherWind: 'Avg wind',
+        weatherLoading: 'Loading weather…',
+        weatherNA: '—',
+        weatherSamples: '({n} hours)',
+        weatherSection: 'Weather',
+        weatherSourceArchive: 'Open-Meteo · ERA5 reanalysis grid',
+        weatherSourceForecast: 'Open-Meteo · forecast / recent archive',
+        weatherGrid: 'Grid {lat}, {lon}',
+        weatherNear: 'Near {place}',
+        hrMax: 'Max HR',
+        hrRest: 'Resting HR',
+        hrKarvonenHint: 'Karvonen: easy &lt;60% · mid 60–80% · hard &gt;80% HRR → {lo} / {hi} bpm',
+        hrSettingsReminder: 'Set HR',
+        settings: 'Settings',
+        settingsTitle: 'Settings',
+        hrSettingsTitle: 'Heart rate zones (Karvonen)',
+        settingsSave: 'Save',
+        hrHelpTitle: 'How to set max & resting HR?',
+        hrHelpBody: '<p><strong>Resting HR</strong></p><ul><li>Measure after waking, before getting up</li><li>Use a watch/strap for 1–3 min and take a steady low value</li><li>Often ~50–70; fitter athletes may be lower</li></ul><p><strong>Max HR</strong></p><ul><li>Best: lab or field progressive test</li><li>Practical: highest HR from your hardest recent race/session (optional small buffer)</li><li>Rough estimate: 220 − age (can be quite wrong)</li></ul><p>Saved in this browser on your device — no need to re-enter every time.</p>',
+      }
+    };
+
+    let lang = localStorage.getItem('gpx-lang') || 'zh';
+    if (!I18N[lang]) lang = 'zh';
+
+    function t(key, vars) {
+      let s = (I18N[lang] && I18N[lang][key]) || (I18N.zh[key]) || key;
+      if (vars) {
+        Object.keys(vars).forEach(k => {
+          s = s.replace(new RegExp('\\{' + k + '\\}', 'g'), vars[k]);
+        });
+      }
+      return s;
+    }
+
+    function applyStaticI18n() {
+      document.querySelectorAll('[data-i18n]').forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-html]').forEach(el => {
+        const key = el.getAttribute('data-i18n-html');
+        el.innerHTML = t(key);
+      });
+      document.title = t('pageTitle');
+      document.querySelectorAll('#langSwitch button').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.lang === lang);
+      });
+    }
+
+    function setLang(next) {
+      if (!I18N[next] || next === lang) return;
+      lang = next;
+      localStorage.setItem('gpx-lang', lang);
+      applyStaticI18n();
+      syncHrInputs();
+      renderTagBar();
+      // Re-render dynamic content
+      if (runs.length) {
+        renderRunList();
+        const run = runs.find(r => r.id === selectedId);
+        if (run) {
+          renderSummary(run.summary);
+          renderHR(run.points);
+          drawElevChart(run.points);
+          renderSplits(run.splits);
+          rebuildMapLayers();
+        }
+        renderCompare();
+      } else {
+        renderRunList();
+      }
+    }
+
+    // ========== Theme ==========
+    let theme = localStorage.getItem('gpx-theme') || 'dark';
+    if (theme !== 'light' && theme !== 'dark') theme = 'dark';
+
+    function applyTheme() {
+      document.documentElement.setAttribute('data-theme', theme);
+      const btn = $('#themeBtn');
+      if (btn) {
+        btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+        btn.title = t('themeToggle');
+      }
+      // Redraw charts with new colors
+      if (typeof runs !== 'undefined' && runs.length) {
+        const run = runs.find(r => r.id === selectedId);
+        if (run) {
+          renderHR(run.points);
+          drawElevChart(run.points);
+        }
+        if ($('#tab-compare')?.classList.contains('active')) {
+          renderOverlayCharts();
+        }
+      }
+    }
+
+    function toggleTheme() {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('gpx-theme', theme);
+      applyTheme();
+    }
+
+    // ========== Colors ==========
+    const RUN_COLORS = [
+      '#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#a855f7',
+      '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'
+    ];
+
+    // ========== Utilities ==========
+    const $ = (sel) => document.querySelector(sel);
+    const $$ = (sel) => document.querySelectorAll(sel);
+    const fmt = {
+      time(sec) {
+        if (sec == null || isNaN(sec)) return '—';
+        sec = Math.round(sec);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        return `${m}:${String(s).padStart(2,'0')}`;
+      },
+      pace(secPerKm) {
+        if (secPerKm == null || !isFinite(secPerKm) || secPerKm <= 0) return '—';
+        let total = Math.round(secPerKm);
+        let m = Math.floor(total / 60);
+        let s = total % 60;
+        if (s >= 60) { m += 1; s -= 60; }
+        return `${m}:${String(s).padStart(2,'0')}/km`;
+      },
+      dist(m) {
+        if (m >= 1000) return (m / 1000).toFixed(2) + ' km';
+        return Math.round(m) + ' m';
+      },
+      elev(m) {
+        if (m == null) return '—';
+        return (m >= 0 ? '+' : '') + Math.round(m) + ' m';
+      },
+      hr(v) {
+        if (v == null || isNaN(v)) return '—';
+        return Math.round(v) + ' bpm';
+      },
+      date(d) {
+        if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '—';
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      },
+      clock(d) {
+        if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '—';
+        const h = String(d.getHours()).padStart(2, '0');
+        const m = String(d.getMinutes()).padStart(2, '0');
+        return `${h}:${m}`;
+      },
+      datetime(d) {
+        if (!d || !(d instanceof Date) || isNaN(d.getTime())) return '—';
+        return `${fmt.date(d)} ${fmt.clock(d)}`;
+      }
+    };
+
+    function haversine(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = (d) => d * Math.PI / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat/2)**2 +
+                Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2)**2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    }
+
+    function shortName(filename) {
+      return filename.replace(/\.gpx$/i, '').replace(/[_-]+/g, ' ').slice(0, 40);
+    }
+
+    // ========== GPX Parser ==========
+    function parseGPX(xmlText) {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, 'application/xml');
+      if (doc.querySelector('parsererror')) {
+        throw new Error(t('errBadGpx'));
+      }
+
+      let pts = [...doc.querySelectorAll('trkpt')];
+      if (pts.length === 0) pts = [...doc.querySelectorAll('rtept')];
+      if (pts.length === 0) throw new Error(t('errNoTrack'));
+
+      const points = [];
+      for (const el of pts) {
+        const lat = parseFloat(el.getAttribute('lat'));
+        const lon = parseFloat(el.getAttribute('lon'));
+        if (isNaN(lat) || isNaN(lon)) continue;
+
+        const timeEl = el.querySelector('time');
+        const elevEl = el.querySelector('ele');
+        let hr = null;
+        const hrEl =
+          el.querySelector('hr') ||
+          el.querySelector('*[local-name="hr"]') ||
+          el.getElementsByTagNameNS('*', 'hr')[0];
+        if (hrEl && hrEl.textContent) {
+          const v = parseFloat(hrEl.textContent.trim());
+          if (!isNaN(v) && v > 20 && v < 250) hr = v;
+        }
+
+        points.push({
+          lat, lon,
+          ele: elevEl ? parseFloat(elevEl.textContent) : null,
+          time: timeEl ? new Date(timeEl.textContent.trim()) : null,
+          hr
+        });
+      }
+
+      if (points.length < 2) throw new Error(t('errFewPoints'));
+
+      let dist = 0;
+      points[0].dist = 0;
+      points[0].dt = 0;
+      for (let i = 1; i < points.length; i++) {
+        dist += haversine(points[i-1].lat, points[i-1].lon, points[i].lat, points[i].lon);
+        points[i].dist = dist;
+        if (points[i].time && points[0].time) {
+          points[i].dt = (points[i].time - points[0].time) / 1000;
+        } else {
+          points[i].dt = null;
+        }
+      }
+      return points;
+    }
+
+    function computeSplits(points, intervalM = 1000) {
+      const totalDist = points[points.length - 1].dist;
+      const splits = [];
+      let nextKm = intervalM;
+      let startIdx = 0;
+      let startDist = 0;
+      let startCumDt = 0;
+      let elevStart = points[0].ele;
+
+      for (let i = 1; i < points.length; i++) {
+        while (points[i].dist >= nextKm && nextKm <= totalDist + 0.5) {
+          const prev = points[i - 1];
+          const curr = points[i];
+          const segDist = curr.dist - prev.dist;
+          const ratio = segDist > 0 ? (nextKm - prev.dist) / segDist : 0;
+          const lat = prev.lat + (curr.lat - prev.lat) * ratio;
+          const lon = prev.lon + (curr.lon - prev.lon) * ratio;
+          const ele = (prev.ele != null && curr.ele != null)
+            ? prev.ele + (curr.ele - prev.ele) * ratio
+            : (curr.ele ?? prev.ele);
+
+          let cumDt = null;
+          let t = null;
+          if (prev.dt != null && curr.dt != null) {
+            cumDt = prev.dt + (curr.dt - prev.dt) * ratio;
+          }
+          if (prev.time && curr.time) {
+            t = new Date(prev.time.getTime() + (curr.time - prev.time) * ratio);
+            if (cumDt == null && points[0].time) {
+              cumDt = (t - points[0].time) / 1000;
+            }
+          }
+
+          const splitDuration = (cumDt != null) ? (cumDt - startCumDt) : null;
+          const hrs = [];
+          for (let j = startIdx; j <= i; j++) {
+            if (points[j].hr != null) hrs.push(points[j].hr);
+          }
+          const avgHr = hrs.length ? hrs.reduce((a, b) => a + b, 0) / hrs.length : null;
+          const elevGain = (ele != null && elevStart != null) ? (ele - elevStart) : null;
+          const splitDist = nextKm - startDist;
+          const pace = (splitDuration != null && splitDist > 0)
+            ? (splitDuration / splitDist) * 1000 : null;
+
+          splits.push({
+            km: nextKm / 1000,
+            lat, lon, ele,
+            time: t,
+            duration: splitDuration,
+            cumDuration: cumDt,
+            pace,
+            avgHr,
+            elevDelta: elevGain,
+            startIdx, endIdx: i
+          });
+
+          startIdx = i;
+          startDist = nextKm;
+          if (cumDt != null) startCumDt = cumDt;
+          elevStart = ele;
+          nextKm += intervalM;
+        }
+      }
+
+      const remain = totalDist - startDist;
+      if (remain > 50) {
+        const last = points[points.length - 1];
+        const hrs = [];
+        for (let j = startIdx; j < points.length; j++) {
+          if (points[j].hr != null) hrs.push(points[j].hr);
+        }
+        const avgHr = hrs.length ? hrs.reduce((a, b) => a + b, 0) / hrs.length : null;
+        let cumDt = last.dt;
+        if (cumDt == null && last.time && points[0].time) {
+          cumDt = (last.time - points[0].time) / 1000;
+        }
+        const splitDuration = (cumDt != null) ? (cumDt - startCumDt) : null;
+        const elevGain = (last.ele != null && elevStart != null) ? (last.ele - elevStart) : null;
+        const pace = (splitDuration != null && remain > 0)
+          ? (splitDuration / remain) * 1000 : null;
+        splits.push({
+          km: totalDist / 1000,
+          lat: last.lat, lon: last.lon, ele: last.ele,
+          time: last.time,
+          duration: splitDuration,
+          cumDuration: cumDt,
+          pace, avgHr,
+          elevDelta: elevGain,
+          startIdx, endIdx: points.length - 1,
+          partial: true
+        });
+      }
+      return splits;
+    }
+
+    function summarize(points) {
+      const last = points[points.length - 1];
+      const dist = last.dist;
+      let duration = null;
+      if (last.dt != null) duration = last.dt;
+      else if (points[0].time && last.time) duration = (last.time - points[0].time) / 1000;
+
+      const startTime = points[0].time || null;
+      const endTime = last.time || null;
+
+      const hrs = points.filter(p => p.hr != null).map(p => p.hr);
+      const avgHr = hrs.length ? hrs.reduce((a, b) => a + b, 0) / hrs.length : null;
+      const maxHr = hrs.length ? Math.max(...hrs) : null;
+      const minHr = hrs.length ? Math.min(...hrs) : null;
+
+      let elevGain = 0, elevLoss = 0;
+      for (let i = 1; i < points.length; i++) {
+        if (points[i].ele != null && points[i-1].ele != null) {
+          const d = points[i].ele - points[i-1].ele;
+          if (d > 0) elevGain += d;
+          else elevLoss += -d;
+        }
+      }
+      const pace = (duration != null && dist > 0) ? (duration / dist) * 1000 : null;
+
+      // Centroid for weather lookup
+      let latSum = 0, lonSum = 0;
+      points.forEach(p => { latSum += p.lat; lonSum += p.lon; });
+      const lat = latSum / points.length;
+      const lon = lonSum / points.length;
+
+      return {
+        dist, duration, startTime, endTime, lat, lon,
+        avgHr, maxHr, minHr, elevGain, elevLoss, pace,
+        pointCount: points.length, hasHr: hrs.length > 0
+      };
+    }
+
+    // ========== Weather (Open-Meteo) ==========
+    function toDateStr(d) {
+      // local YYYY-MM-DD
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    }
+
+    async function fetchWeatherForRun(run) {
+      const sum = run.summary;
+      if (!sum.startTime || !sum.endTime || sum.lat == null || sum.lon == null) {
+        run.weather = { status: 'error' };
+        return;
+      }
+      run.weather = { status: 'loading' };
+      refreshWeatherUI(run);
+
+      const start = sum.startTime;
+      const end = sum.endTime;
+      // Expand slightly so boundary hours are included
+      const startDate = toDateStr(start);
+      let endDate = toDateStr(end);
+      // If run crosses midnight, endDate is already next day
+      const startMs = start.getTime();
+      const endMs = end.getTime();
+
+      const params = new URLSearchParams({
+        latitude: sum.lat.toFixed(4),
+        longitude: sum.lon.toFixed(4),
+        start_date: startDate,
+        end_date: endDate,
+        hourly: 'temperature_2m,relative_humidity_2m,wind_speed_10m',
+        timezone: 'auto',
+        wind_speed_unit: 'ms'
+      });
+
+      try {
+        // Prefer archive (ERA5). Recent days may lag ~5 days — fallback to forecast past_days.
+        let source = 'archive';
+        let url = `https://archive-api.open-meteo.com/v1/archive?${params}`;
+        let res = await fetch(url);
+        let data = res.ok ? await res.json() : null;
+
+        const hasHourly = data && data.hourly && data.hourly.time && data.hourly.time.length;
+        if (!hasHourly) {
+          // Fallback: forecast API with past_days (good for last ~2 weeks)
+          source = 'forecast';
+          const daysAgo = Math.ceil((Date.now() - startMs) / 86400000) + 1;
+          const pastDays = Math.min(92, Math.max(1, daysAgo));
+          const fParams = new URLSearchParams({
+            latitude: sum.lat.toFixed(4),
+            longitude: sum.lon.toFixed(4),
+            hourly: 'temperature_2m,relative_humidity_2m,wind_speed_10m',
+            past_days: String(pastDays),
+            forecast_days: '1',
+            timezone: 'auto',
+            wind_speed_unit: 'ms'
+          });
+          res = await fetch(`https://api.open-meteo.com/v1/forecast?${fParams}`);
+          data = res.ok ? await res.json() : null;
+        }
+
+        if (!data || !data.hourly || !data.hourly.time) {
+          run.weather = { status: 'error' };
+          refreshWeatherUI(run);
+          return;
+        }
+
+        const times = data.hourly.time;
+        const temps = data.hourly.temperature_2m || [];
+        const hums = data.hourly.relative_humidity_2m || [];
+        const winds = data.hourly.wind_speed_10m || [];
+
+        const tempsSel = [], humsSel = [], windsSel = [];
+        for (let i = 0; i < times.length; i++) {
+          // Open-Meteo times are local wall time when timezone=auto, parse as local
+          const t = new Date(times[i]);
+          const tMs = t.getTime();
+          // Include hour if it overlaps [start, end] (hour block starting at t)
+          const hourEnd = tMs + 3600000;
+          if (hourEnd > startMs && tMs < endMs) {
+            if (temps[i] != null && !isNaN(temps[i])) tempsSel.push(temps[i]);
+            if (hums[i] != null && !isNaN(hums[i])) humsSel.push(hums[i]);
+            if (winds[i] != null && !isNaN(winds[i])) windsSel.push(winds[i]);
+          }
+        }
+
+        // If no overlap (timezone edge cases), take closest hours within ±3h of midpoint
+        if (!tempsSel.length && temps.length) {
+          const mid = (startMs + endMs) / 2;
+          let best = 0, bestDiff = Infinity;
+          for (let i = 0; i < times.length; i++) {
+            const diff = Math.abs(new Date(times[i]).getTime() - mid);
+            if (diff < bestDiff) { bestDiff = diff; best = i; }
+          }
+          const lo = Math.max(0, best - 1);
+          const hi = Math.min(times.length - 1, best + 1);
+          for (let i = lo; i <= hi; i++) {
+            if (temps[i] != null) tempsSel.push(temps[i]);
+            if (hums[i] != null) humsSel.push(hums[i]);
+            if (winds[i] != null) windsSel.push(winds[i]);
+          }
+        }
+
+        const avg = (arr) => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+        run.weather = {
+          status: 'ok',
+          temp: avg(tempsSel),
+          humidity: avg(humsSel),
+          wind: avg(windsSel), // m/s
+          samples: Math.max(tempsSel.length, humsSel.length, windsSel.length),
+          lat: data.latitude,
+          lon: data.longitude,
+          source,
+          place: null
+        };
+        refreshWeatherUI(run);
+        // Reverse-geocode grid point for a readable place name (best-effort)
+        reverseGeocodePlace(data.latitude, data.longitude).then(place => {
+          if (run.weather && run.weather.status === 'ok') {
+            run.weather.place = place;
+            refreshWeatherUI(run);
+          }
+        });
+        return;
+      } catch (e) {
+        console.error('weather fetch failed', e);
+        run.weather = { status: 'error' };
+      }
+      refreshWeatherUI(run);
+    }
+
+    async function reverseGeocodePlace(lat, lon) {
+      if (lat == null || lon == null || isNaN(lat) || isNaN(lon)) return null;
+      try {
+        // BigDataCloud client endpoint — no API key, browser-friendly
+        const locLang = (typeof lang !== 'undefined' && lang === 'en') ? 'en' : 'zh';
+        const url = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(lat)}&longitude=${encodeURIComponent(lon)}&localityLanguage=${locLang}`;
+        const res = await fetch(url);
+        if (!res.ok) return null;
+        const j = await res.json();
+        // Prefer locality / city-level names useful in HK
+        const candidates = [
+          j.locality,
+          j.city,
+          j.principalSubdivision,
+          j.localityInfo && j.localityInfo.administrative && j.localityInfo.administrative[0] && j.localityInfo.administrative[0].name
+        ].filter(Boolean);
+        // Deduplicate and pick first meaningful short name
+        const seen = new Set();
+        for (const c of candidates) {
+          const name = String(c).trim();
+          if (!name || name.length > 40) continue;
+          if (seen.has(name)) continue;
+          seen.add(name);
+          // Skip generic country-level
+          if (/中國|中国|China|Hong Kong|香港特別行政區|香港特别行政区/i.test(name) && seen.size === 1) {
+            continue;
+          }
+          return name;
+        }
+        return candidates[0] || null;
+      } catch (e) {
+        console.warn('reverse geocode failed', e);
+        return null;
+      }
+    }
+
+    function refreshWeatherUI(run) {
+      if (run.id === selectedId) {
+        renderSummary(run.summary);
+      }
+      if ($('#tab-compare')?.classList.contains('active')) {
+        renderCompare();
+      }
+    }
+
+    function weatherLabel(run, key) {
+      const w = run.weather;
+      if (!w || w.status === 'loading') return t('weatherLoading');
+      if (w.status !== 'ok') return t('weatherNA');
+      if (key === 'temp') return w.temp != null ? `${w.temp.toFixed(1)} °C` : t('weatherNA');
+      if (key === 'humidity') return w.humidity != null ? `${Math.round(w.humidity)} %` : t('weatherNA');
+      if (key === 'wind') return w.wind != null ? `${w.wind.toFixed(1)} m/s` : t('weatherNA');
+      return t('weatherNA');
+    }
+
+    // ========== State ==========
+    let runs = []; // { id, name, color, points, splits, summary, visible, tagIds, uploadedAt, layer, markersLayer }
+    let selectedId = null;
+    let nextColorIdx = 0;
+    let map, allBounds = null;
+    const TAG_ALL = '__all__';
+    let tags = []; // { id, name, createdAt }
+    let activeTagId = TAG_ALL;
+    let sortMode = localStorage.getItem('gpx-sort') || 'run_desc';
+
+    // ---------- IndexedDB persistence ----------
+    const IDB_NAME = 'gpx-run-analyzer';
+    const IDB_VER = 1;
+    let idb = null;
+
+    function openIDB() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open(IDB_NAME, IDB_VER);
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          if (!db.objectStoreNames.contains('runs')) db.createObjectStore('runs', { keyPath: 'id' });
+          if (!db.objectStoreNames.contains('tags')) db.createObjectStore('tags', { keyPath: 'id' });
+        };
+        req.onsuccess = () => { idb = req.result; resolve(idb); };
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function idbPut(store, value) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return reject(new Error('no db'));
+        const tx = idb.transaction(store, 'readwrite');
+        tx.objectStore(store).put(value);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function idbDelete(store, key) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return reject(new Error('no db'));
+        const tx = idb.transaction(store, 'readwrite');
+        tx.objectStore(store).delete(key);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function idbGetAll(store) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return resolve([]);
+        const tx = idb.transaction(store, 'readonly');
+        const req = tx.objectStore(store).getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function idbClear(store) {
+      return new Promise((resolve, reject) => {
+        if (!idb) return resolve();
+        const tx = idb.transaction(store, 'readwrite');
+        tx.objectStore(store).clear();
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+
+    function serializeRun(run) {
+      return {
+        id: run.id,
+        name: run.name,
+        color: run.color,
+        visible: !!run.visible,
+        tagIds: Array.isArray(run.tagIds) ? run.tagIds.slice() : [],
+        uploadedAt: run.uploadedAt || Date.now(),
+        points: run.points.map(p => ({
+          lat: p.lat,
+          lon: p.lon,
+          ele: p.ele != null ? p.ele : null,
+          time: p.time instanceof Date ? p.time.toISOString() : (p.time || null),
+          hr: p.hr != null ? p.hr : null,
+          dist: p.dist,
+          dt: p.dt
+        }))
+      };
+    }
+
+    function reviveRun(raw) {
+      const points = (raw.points || []).map(p => ({
+        lat: p.lat,
+        lon: p.lon,
+        ele: p.ele,
+        time: p.time ? new Date(p.time) : null,
+        hr: p.hr,
+        dist: p.dist,
+        dt: p.dt
+      }));
+      // Ensure dist/dt if missing
+      if (points.length && points[0].dist == null) {
+        // recompute basic cumulative distance
+        const R = 6371000;
+        let dist = 0;
+        points[0].dist = 0;
+        for (let i = 1; i < points.length; i++) {
+          const a = points[i - 1], b = points[i];
+          const φ1 = a.lat * Math.PI / 180, φ2 = b.lat * Math.PI / 180;
+          const dφ = (b.lat - a.lat) * Math.PI / 180;
+          const dλ = (b.lon - a.lon) * Math.PI / 180;
+          const h = Math.sin(dφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(dλ / 2) ** 2;
+          dist += 2 * R * Math.asin(Math.min(1, Math.sqrt(h)));
+          b.dist = dist;
+        }
+      }
+      if (points.length && points[0].dt == null && points[0].time) {
+        const t0 = points[0].time.getTime();
+        points.forEach(p => {
+          if (p.time) p.dt = (p.time.getTime() - t0) / 1000;
+        });
+      }
+      const splits = computeSplits(points, 1000);
+      const summary = summarize(points);
+      return {
+        id: raw.id,
+        name: raw.name,
+        color: raw.color,
+        points,
+        splits,
+        summary,
+        visible: raw.visible !== false,
+        tagIds: Array.isArray(raw.tagIds) ? raw.tagIds.slice() : [],
+        uploadedAt: raw.uploadedAt || Date.now(),
+        weather: null,
+        layer: null,
+        markersLayer: null
+      };
+    }
+
+    async function persistRun(run) {
+      try {
+        await idbPut('runs', serializeRun(run));
+      } catch (e) {
+        console.warn(e);
+        showError(t('persistFail'));
+      }
+    }
+
+    async function persistTag(tag) {
+      try { await idbPut('tags', tag); } catch (e) { console.warn(e); }
+    }
+
+    async function deletePersistedRun(id) {
+      try { await idbDelete('runs', id); } catch (e) { console.warn(e); }
+    }
+
+    async function deletePersistedTag(id) {
+      try { await idbDelete('tags', id); } catch (e) { console.warn(e); }
+    }
+
+    function getFilteredSortedRuns() {
+      let list = runs.slice();
+      if (activeTagId !== TAG_ALL) {
+        list = list.filter(r => (r.tagIds || []).includes(activeTagId));
+      }
+      const runTime = (r) => {
+        const st = r.summary && r.summary.startTime;
+        return st instanceof Date ? st.getTime() : (st ? new Date(st).getTime() : 0);
+      };
+      list.sort((a, b) => {
+        if (sortMode === 'upload_asc') return (a.uploadedAt || 0) - (b.uploadedAt || 0);
+        if (sortMode === 'upload_desc') return (b.uploadedAt || 0) - (a.uploadedAt || 0);
+        if (sortMode === 'run_asc') return runTime(a) - runTime(b);
+        return runTime(b) - runTime(a); // run_desc default
+      });
+      return list;
+    }
+
+    function renderTagBar() {
+      const bar = $('#tagBar');
+      if (!bar) return;
+      const chips = [];
+      chips.push(`<button type="button" class="tag-chip ${activeTagId === TAG_ALL ? 'active' : ''}" data-tag="${TAG_ALL}">${t('tagAll')}</button>`);
+      tags.forEach(tag => {
+        chips.push(`<button type="button" class="tag-chip ${activeTagId === tag.id ? 'active' : ''}" data-tag="${tag.id}">
+          ${escapeHtml(tag.name)}
+          <span class="tag-del" data-del-tag="${tag.id}" title="✕">×</span>
+        </button>`);
+      });
+      chips.push(`<button type="button" class="tag-chip tag-add" data-tag-add="1">${t('tagAdd')}</button>`);
+      bar.innerHTML = chips.join('');
+      bar.querySelectorAll('[data-tag]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          if (e.target.closest('[data-del-tag]')) return;
+          activeTagId = btn.dataset.tag;
+          localStorage.setItem('gpx-active-tag', activeTagId);
+          renderTagBar();
+          renderRunList();
+          // Visibility for compare: only filtered runs shown on map if we hide others?
+          // Spec: tag filters list; for compare show runs in that tag.
+          // Map shows visible runs that pass filter — hide others from map temporarily.
+          applyTagVisibilityToMap();
+          if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+        });
+      });
+      bar.querySelectorAll('[data-del-tag]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = btn.dataset.delTag;
+          if (!confirm(t('tagDeleteConfirm'))) return;
+          tags = tags.filter(x => x.id !== id);
+          runs.forEach(r => {
+            r.tagIds = (r.tagIds || []).filter(tid => tid !== id);
+            persistRun(r);
+          });
+          await deletePersistedTag(id);
+          if (activeTagId === id) activeTagId = TAG_ALL;
+          renderTagBar();
+          renderRunList();
+          applyTagVisibilityToMap();
+        });
+      });
+      bar.querySelector('[data-tag-add]')?.addEventListener('click', async () => {
+        const name = prompt(t('tagNamePrompt'));
+        if (!name || !name.trim()) return;
+        const trimmed = name.trim();
+        if (tags.some(x => x.name === trimmed)) {
+          showError(t('tagExists'));
+          return;
+        }
+        const tag = { id: 'tag_' + Date.now().toString(36), name: trimmed, createdAt: Date.now() };
+        tags.push(tag);
+        await persistTag(tag);
+        activeTagId = tag.id;
+        localStorage.setItem('gpx-active-tag', activeTagId);
+        renderTagBar();
+        renderRunList();
+        applyTagVisibilityToMap();
+      });
+    }
+
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    }
+
+    function applyTagVisibilityToMap() {
+      // Map still respects run.visible; compare uses getFilteredSortedRuns for which to include.
+      // Rebuild map with only filtered+visible runs by temporarily treating unfiltered as not on map.
+      rebuildMapLayers();
+    }
+
+    function runsForMapAndCompare() {
+      // Same tag filter + sort order as the sidebar list (only visible runs)
+      return getFilteredSortedRuns().filter(r => r.visible);
+    }
+
+    // ========== Map ==========
+    function initMap() {
+      map = L.map('map', { zoomControl: true }).setView([22.3, 114.17], 12);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap',
+        maxZoom: 19
+      }).addTo(map);
+    }
+
+    function rebuildMapLayers() {
+      // Remove old layers
+      runs.forEach(r => {
+        if (r.layer) map.removeLayer(r.layer);
+        if (r.markersLayer) map.removeLayer(r.markersLayer);
+      });
+
+      allBounds = null;
+      const showTracks = $('#showTracks')?.checked !== false;
+      const showMarkers = $('#showMarkers')?.checked !== false;
+      const showOtherMarkers = $('#showOtherMarkers')?.checked !== false;
+
+      const filteredIds = new Set(getFilteredSortedRuns().map(r => r.id));
+      runs.forEach(run => {
+        if (!run.visible || !filteredIds.has(run.id)) return;
+
+        const latlngs = run.points.map(p => [p.lat, p.lon]);
+        const isSelected = run.id === selectedId;
+        const poly = L.polyline(latlngs, {
+          color: run.color,
+          weight: isSelected ? 5 : 3,
+          opacity: isSelected ? 0.95 : 0.65,
+          lineJoin: 'round'
+        });
+
+        // Direction arrows along the route
+        const decorator = L.polylineDecorator(poly, {
+          patterns: [{
+            offset: 40,
+            repeat: isSelected ? 80 : 120,
+            symbol: L.Symbol.arrowHead({
+              pixelSize: isSelected ? 10 : 8,
+              polygon: false,
+              pathOptions: {
+                stroke: true,
+                color: run.color,
+                weight: isSelected ? 2.5 : 2,
+                opacity: isSelected ? 0.95 : 0.7
+              }
+            })
+          }]
+        });
+
+        run.layer = L.layerGroup([poly, decorator]);
+        if (showTracks) run.layer.addTo(map);
+
+        // Start / end — selected solid, others semi-transparent
+        const seOpacity = isSelected ? 1 : 0.4;
+        const start = L.circleMarker([run.points[0].lat, run.points[0].lon], {
+          radius: isSelected ? 7 : 5,
+          color: run.color,
+          fillColor: '#22c55e',
+          fillOpacity: seOpacity,
+          opacity: seOpacity,
+          weight: 2
+        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">${t('startPoint')}</div>`);
+        const end = L.circleMarker([run.points[run.points.length-1].lat, run.points[run.points.length-1].lon], {
+          radius: isSelected ? 7 : 5,
+          color: run.color,
+          fillColor: '#ef4444',
+          fillOpacity: seOpacity,
+          opacity: seOpacity,
+          weight: 2
+        }).bindPopup(`<div class="popup-title">${run.name}</div><div class="popup-row">${t('endPoint')}</div>`);
+
+        const markers = [start, end];
+
+        // KM markers for all runs; selected solid, others semi-transparent
+        // Non-selected markers can be hidden via showOtherMarkers toggle
+        if (isSelected || showOtherMarkers) {
+          const opacity = isSelected ? 1 : 0.35;
+          const size = isSelected ? 26 : 20;
+          const fontSize = isSelected ? 11 : 9;
+          const border = isSelected ? '2px solid #fff' : '1px solid rgba(255,255,255,0.5)';
+          const shadow = isSelected
+            ? '0 1px 5px rgba(0,0,0,.5)'
+            : '0 1px 2px rgba(0,0,0,.25)';
+          const zIndex = isSelected ? 600 : 400;
+
+          run.splits.forEach((s) => {
+            if (s.partial) return;
+            const label = Math.round(s.km);
+            const icon = L.divIcon({
+              className: '',
+              html: `<div style="
+                background:${run.color};color:#fff;
+                width:${size}px;height:${size}px;border-radius:50%;
+                display:flex;align-items:center;justify-content:center;
+                font-size:${fontSize}px;font-weight:700;
+                border:${border};box-shadow:${shadow};
+                opacity:${opacity};">${label}</div>`,
+              iconSize: [size, size],
+              iconAnchor: [size / 2, size / 2]
+            });
+            const m = L.marker([s.lat, s.lon], { icon, zIndexOffset: zIndex });
+            m.bindPopup(`
+              <div class="popup-title">${run.name} · ${t('kmN', { n: label })}</div>
+              <div class="popup-row">${t('arrival')}：${fmt.time(s.cumDuration)}</div>
+              <div class="popup-row">${t('splitTime')}：${fmt.time(s.duration)}（${fmt.pace(s.pace)}）</div>
+              <div class="popup-row">${t('avgHr')}：${fmt.hr(s.avgHr)}</div>
+              <div class="popup-row">${t('elevChange')}：${fmt.elev(s.elevDelta)}</div>
+            `);
+            markers.push(m);
+          });
+        }
+
+        run.markersLayer = L.layerGroup(markers);
+        if (showMarkers) run.markersLayer.addTo(map);
+
+        const b = poly.getBounds();
+        allBounds = allBounds ? allBounds.extend(b) : b;
+      });
+
+      if (allBounds && allBounds.isValid()) {
+        map.fitBounds(allBounds, { padding: [30, 30] });
+      }
+    }
+
+    // ========== UI ==========
+    function showError(msg) {
+      const el = $('#errorBanner');
+      el.textContent = msg;
+      el.style.display = 'block';
+      setTimeout(() => { el.style.display = 'none'; }, 5000);
+    }
+
+    function sortRunsList(list) {
+      const runTime = (r) => {
+        const st = r.summary && r.summary.startTime;
+        return st instanceof Date ? st.getTime() : (st ? new Date(st).getTime() : 0);
+      };
+      return list.slice().sort((a, b) => {
+        if (sortMode === 'upload_asc') return (a.uploadedAt || 0) - (b.uploadedAt || 0);
+        if (sortMode === 'upload_desc') return (b.uploadedAt || 0) - (a.uploadedAt || 0);
+        if (sortMode === 'run_asc') return runTime(a) - runTime(b);
+        return runTime(b) - runTime(a);
+      });
+    }
+
+    function runItemHtml(r, { inCurrent, outOfTag }) {
+      const tagNames = (r.tagIds || []).map(tid => tags.find(x => x.id === tid)?.name).filter(Boolean);
+      return `
+        <div class="run-item ${r.id === selectedId ? 'active' : ''} ${r.visible ? '' : 'hidden-run'} ${outOfTag ? 'out-of-tag' : ''}" data-id="${r.id}">
+          <div class="run-color" style="background:${r.color}"></div>
+          <div class="run-info">
+            <div class="run-name">${escapeHtml(r.name)}</div>
+            <div class="run-meta">${fmt.date(r.summary.startTime)} · ${fmt.dist(r.summary.dist)} · ${fmt.time(r.summary.duration)}</div>
+            ${tagNames.length ? `<div class="run-tags-mini">${tagNames.map(escapeHtml).join(' · ')}</div>` : ''}
+          </div>
+          <div class="run-actions">
+            ${activeTagId !== TAG_ALL ? `<button class="icon-btn" data-action="tag" title="${inCurrent ? t('removeFromTag') : t('assignTag')}">${inCurrent ? '🏷' : '＋'}</button>` : ''}
+            <button class="icon-btn" data-action="toggle" title="${t('showHide')}">${r.visible ? '👁' : '👁‍🗨'}</button>
+            <button class="icon-btn" data-action="remove" title="${t('remove')}">✕</button>
+          </div>
+        </div>`;
+    }
+
+    function renderRunList() {
+      const list = $('#runList');
+      if (!list) return;
+      const filtered = getFilteredSortedRuns();
+      $('#runCount').textContent = `(${filtered.length}/${runs.length})`;
+
+      let html = '';
+      if (activeTagId === TAG_ALL) {
+        html = sortRunsList(runs).map(r => runItemHtml(r, { inCurrent: false, outOfTag: false })).join('');
+      } else {
+        const inTag = sortRunsList(runs.filter(r => (r.tagIds || []).includes(activeTagId)));
+        const outTag = sortRunsList(runs.filter(r => !(r.tagIds || []).includes(activeTagId)));
+        html += `<div class="run-section-label">${t('tagInSection')} (${inTag.length})</div>`;
+        if (!inTag.length) html += `<div class="run-section-label" style="font-weight:400">${t('tagEmptyIn')}</div>`;
+        else html += inTag.map(r => runItemHtml(r, { inCurrent: true, outOfTag: false })).join('');
+        if (outTag.length) {
+          // Collapsed by default so long libraries don't dominate the list
+          html += `<button type="button" class="run-section-toggle" id="outTagToggle" aria-expanded="false">
+            <span>${t('tagOutSection')} (${outTag.length}) · ${t('tagOutHint')}</span>
+            <span class="chev">▼</span>
+          </button>`;
+          html += `<div class="run-out-list" id="outTagList" hidden>`;
+          html += outTag.map(r => runItemHtml(r, { inCurrent: false, outOfTag: true })).join('');
+          html += `</div>`;
+        }
+      }
+      list.innerHTML = html;
+
+      const outToggle = list.querySelector('#outTagToggle');
+      const outList = list.querySelector('#outTagList');
+      if (outToggle && outList) {
+        outToggle.addEventListener('click', () => {
+          const open = outList.hidden;
+          outList.hidden = !open;
+          outToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+          outToggle.querySelector('.chev').textContent = open ? '▲' : '▼';
+        });
+      }
+
+      list.querySelectorAll('.run-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+          const action = e.target.closest('[data-action]')?.dataset.action;
+          const id = el.dataset.id;
+          if (action === 'toggle') {
+            const run = runs.find(r => r.id === id);
+            if (run) {
+              run.visible = !run.visible;
+              persistRun(run);
+              rebuildMapLayers();
+              renderRunList();
+              if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+            }
+            e.stopPropagation();
+          } else if (action === 'tag') {
+            const run = runs.find(r => r.id === id);
+            if (run && activeTagId !== TAG_ALL) {
+              const set = new Set(run.tagIds || []);
+              if (set.has(activeTagId)) set.delete(activeTagId);
+              else set.add(activeTagId);
+              run.tagIds = [...set];
+              persistRun(run);
+              renderRunList();
+              applyTagVisibilityToMap();
+              if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+            }
+            e.stopPropagation();
+          } else if (action === 'remove') {
+            removeRun(id);
+            e.stopPropagation();
+          } else {
+            selectRun(id);
+          }
+        });
+      });
+    }
+
+    function renderSummary(sum) {
+      const run = runs.find(r => r.id === selectedId);
+      const w = run && run.weather;
+
+      $('#summaryStats').innerHTML = `
+        <div class="stat"><div class="stat-label">${t('date')}</div><div class="stat-value" style="font-size:0.95rem">${fmt.date(sum.startTime)}</div></div>
+        <div class="stat"><div class="stat-label">${t('startTime')}</div><div class="stat-value" style="font-size:0.95rem">${fmt.clock(sum.startTime)}</div></div>
+        <div class="stat"><div class="stat-label">${t('totalDist')}</div><div class="stat-value">${fmt.dist(sum.dist)}</div></div>
+        <div class="stat"><div class="stat-label">${t('elapsed')}</div><div class="stat-value">${fmt.time(sum.duration)}</div></div>
+        <div class="stat"><div class="stat-label">${t('avgPace')}</div><div class="stat-value">${fmt.pace(sum.pace)}</div></div>
+        <div class="stat"><div class="stat-label">${t('points')}</div><div class="stat-value">${sum.pointCount.toLocaleString()}</div></div>
+        <div class="stat"><div class="stat-label">${t('avgHr')}</div><div class="stat-value">${fmt.hr(sum.avgHr)}</div></div>
+        <div class="stat"><div class="stat-label">${t('maxHr')}</div><div class="stat-value">${fmt.hr(sum.maxHr)}</div></div>
+        <div class="stat"><div class="stat-label">${t('elevGain')}</div><div class="stat-value">${Math.round(sum.elevGain)} <small>m</small></div></div>
+        <div class="stat"><div class="stat-label">${t('elevLoss')}</div><div class="stat-value">${Math.round(sum.elevLoss)} <small>m</small></div></div>
+      `;
+
+      const block = $('#weatherBlock');
+      if (!block) return;
+
+      let tempVal = t('weatherNA'), humVal = t('weatherNA'), windVal = t('weatherNA'), wHint = '';
+      let sourceLine = '';
+      if (w && w.status === 'loading') {
+        tempVal = humVal = windVal = '…';
+        sourceLine = t('weatherLoading');
+      } else if (w && w.status === 'ok') {
+        tempVal = w.temp != null ? `${w.temp.toFixed(1)} °C` : t('weatherNA');
+        humVal = w.humidity != null ? `${Math.round(w.humidity)} %` : t('weatherNA');
+        windVal = w.wind != null ? `${w.wind.toFixed(1)} m/s` : t('weatherNA');
+        if (w.samples) wHint = ` <small>${t('weatherSamples', { n: w.samples })}</small>`;
+        const srcLabel = w.source === 'forecast' ? t('weatherSourceForecast') : t('weatherSourceArchive');
+        const place = w.place
+          ? t('weatherNear', { place: w.place })
+          : null;
+        const grid = (w.lat != null && w.lon != null)
+          ? t('weatherGrid', { lat: Number(w.lat).toFixed(3), lon: Number(w.lon).toFixed(3) })
+          : '';
+        if (place && grid) sourceLine = `${srcLabel}<br>${place} · ${grid}`;
+        else if (place) sourceLine = `${srcLabel}<br>${place}`;
+        else if (grid) sourceLine = `${srcLabel}<br>${grid}`;
+        else sourceLine = srcLabel;
+      } else {
+        sourceLine = t('weatherNA');
+      }
+
+      block.innerHTML = `
+        <div class="weather-block-title">${t('weatherSection')}</div>
+        <div class="weather-block-source">${sourceLine}</div>
+        <div class="stats-grid">
+          <div class="stat"><div class="stat-label">${t('weatherTemp')}</div><div class="stat-value" style="font-size:0.95rem">${tempVal}${wHint}</div></div>
+          <div class="stat"><div class="stat-label">${t('weatherHumidity')}</div><div class="stat-value" style="font-size:0.95rem">${humVal}</div></div>
+          <div class="stat"><div class="stat-label">${t('weatherWind')}</div><div class="stat-value" style="font-size:0.95rem">${windVal}</div></div>
+        </div>
+      `;
+    }
+
+    // Karvonen HR zones: target = (HRmax - HRrest) × % + HRrest
+    // Easy <60% HRR | Moderate 60–80% | Hard >80%
+    let hrMax = parseInt(localStorage.getItem('gpx-hr-max') || '190', 10);
+    let hrRest = parseInt(localStorage.getItem('gpx-hr-rest') || '60', 10);
+    if (!isFinite(hrMax) || hrMax < 120 || hrMax > 230) hrMax = 190;
+    if (!isFinite(hrRest) || hrRest < 30 || hrRest > 120) hrRest = 60;
+
+    function karvonenZones() {
+      let max = hrMax, rest = hrRest;
+      if (rest >= max) rest = Math.max(30, max - 40);
+      const hrr = max - rest;
+      const lo = Math.round(hrr * 0.60 + rest); // 60% HRR
+      const hi = Math.round(hrr * 0.80 + rest); // 80% HRR
+      return { lo, hi, max, rest, hrr };
+    }
+
+    function zoneOf(hr, lo, hi) {
+      if (hr < lo) return 'low';
+      if (hr < hi) return 'mid';
+      return 'high';
+    }
+
+    function syncHrInputs() {
+      const maxEl = $('#hrMaxInput');
+      const restEl = $('#hrRestInput');
+      if (maxEl) maxEl.value = hrMax;
+      if (restEl) restEl.value = hrRest;
+      const z = karvonenZones();
+      const line = t('hrKarvonenHint', { lo: z.lo, hi: z.hi });
+      const hint2 = $('#hrZoneHintSettings');
+      if (hint2) hint2.innerHTML = line;
+    }
+
+    function openSettings() {
+      const modal = $('#settingsModal');
+      if (!modal) return;
+      syncHrInputs();
+      // refresh help HTML for current language
+      const help = modal.querySelector('[data-i18n-html="hrHelpBody"]');
+      if (help) help.innerHTML = t('hrHelpBody');
+      applyStaticI18n();
+      syncHrInputs();
+      modal.hidden = false;
+    }
+
+    function closeSettings() {
+      const modal = $('#settingsModal');
+      if (modal) modal.hidden = true;
+    }
+
+    function renderHR(points) {
+      const bar = $('#hrBar');
+      const legend = $('#hrLegend');
+      syncHrInputs();
+      const { lo, hi } = karvonenZones();
+      const withHr = points.filter(p => p.hr != null);
+      if (!withHr.length) {
+        bar.innerHTML = '';
+        legend.innerHTML = `<span>${t('noHrData')}</span>`;
+        drawHRChart([]);
+        return;
+      }
+
+      // Point counts for bar width (Karvonen thresholds)
+      let low = 0, mid = 0, high = 0;
+      withHr.forEach(p => {
+        const z = zoneOf(p.hr, lo, hi);
+        if (z === 'low') low++;
+        else if (z === 'mid') mid++;
+        else high++;
+      });
+      const total = withHr.length;
+
+      // Time spent in each zone (seconds) from consecutive sample gaps
+      let lowT = 0, midT = 0, highT = 0;
+      for (let i = 1; i < points.length; i++) {
+        const prev = points[i - 1], curr = points[i];
+        const hr = curr.hr != null ? curr.hr : prev.hr;
+        if (hr == null) continue;
+        let dt = null;
+        if (curr.dt != null && prev.dt != null) dt = curr.dt - prev.dt;
+        else if (curr.time && prev.time) dt = (curr.time - prev.time) / 1000;
+        if (dt == null || dt < 0 || dt > 120) continue; // skip GPS gaps
+        const z = zoneOf(hr, lo, hi);
+        if (z === 'low') lowT += dt;
+        else if (z === 'mid') midT += dt;
+        else highT += dt;
+      }
+      // Fallback: proportional to total duration if no gaps
+      const timed = lowT + midT + highT;
+      if (timed < 1) {
+        let totalDur = null;
+        const last = points[points.length - 1];
+        if (last.dt != null) totalDur = last.dt;
+        else if (last.time && points[0].time) totalDur = (last.time - points[0].time) / 1000;
+        if (totalDur && total > 0) {
+          lowT = totalDur * (low / total);
+          midT = totalDur * (mid / total);
+          highT = totalDur * (high / total);
+        }
+      }
+
+      bar.innerHTML = `
+        <span style="width:${(low/total)*100}%;background:var(--hr-low)"></span>
+        <span style="width:${(mid/total)*100}%;background:var(--hr-mid)"></span>
+        <span style="width:${(high/total)*100}%;background:var(--hr-high)"></span>
+      `;
+      const zoneTime = (sec) => {
+        if (sec == null || isNaN(sec)) return '—';
+        sec = Math.round(sec);
+        const h = Math.floor(sec / 3600);
+        const m = Math.floor((sec % 3600) / 60);
+        const s = sec % 60;
+        return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      };
+      legend.innerHTML = `
+        <span><i style="background:var(--hr-low)"></i>&lt;${lo} (${Math.round(low/total*100)}% · ${zoneTime(lowT)})</span>
+        <span><i style="background:var(--hr-mid)"></i>${lo}–${hi} (${Math.round(mid/total*100)}% · ${zoneTime(midT)})</span>
+        <span><i style="background:var(--hr-high)"></i>&gt;${hi} (${Math.round(high/total*100)}% · ${zoneTime(highT)})</span>
+      `;
+      drawHRChart(points);
+    }
+
+    function drawHRChart(points) {
+      const canvas = $('#hrChart');
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.scale(dpr, dpr);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const withHr = points.filter(p => p.hr != null && p.dist != null);
+      if (withHr.length < 2) {
+        ctx.fillStyle = '#8b9cb3';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t('noHrChart'), W / 2, H / 2);
+        return;
+      }
+
+      const minHr = Math.min(...withHr.map(p => p.hr)) - 5;
+      const maxHr = Math.max(...withHr.map(p => p.hr)) + 5;
+      const maxDist = withHr[withHr.length - 1].dist;
+      const pad = { t: 8, b: 18, l: 32, r: 8 };
+      const plotW = W - pad.l - pad.r;
+      const plotH = H - pad.t - pad.b;
+
+      const styles = getComputedStyle(document.documentElement);
+      const gridColor = styles.getPropertyValue('--chart-grid').trim() || 'rgba(45,58,79,0.8)';
+      const mutedColor = styles.getPropertyValue('--muted').trim() || '#8b9cb3';
+      ctx.strokeStyle = gridColor;
+      ctx.lineWidth = 1;
+      ctx.fillStyle = mutedColor;
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 3; i++) {
+        const y = pad.t + plotH * (1 - i / 3);
+        const val = minHr + (maxHr - minHr) * (i / 3);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(W - pad.r, y);
+        ctx.stroke();
+        ctx.fillText(Math.round(val), pad.l - 4, y + 3);
+      }
+
+      ctx.beginPath();
+      ctx.strokeStyle = styles.getPropertyValue('--red').trim() || '#ef4444';
+      ctx.lineWidth = 1.5;
+      withHr.forEach((p, i) => {
+        const x = pad.l + (p.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (p.hr - minHr) / (maxHr - minHr));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor);
+    }
+
+    /** X-axis: tick every 500m, label every 1km */
+    function drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor) {
+      if (!maxDist || maxDist <= 0) return;
+      ctx.textAlign = 'center';
+      ctx.font = '10px sans-serif';
+      ctx.setLineDash([]);
+
+      const axisY = pad.t + plotH;
+      // Draw every 500m using integer meters to avoid float issues
+      const maxM = Math.floor(maxDist);
+      for (let d = 0; d <= maxM; d += 500) {
+        const x = pad.l + (d / maxDist) * plotW;
+        const isKm = d % 1000 === 0;
+
+        if (isKm) {
+          // Full km: longer tick + dashed vertical guide
+          ctx.strokeStyle = mutedColor;
+          ctx.lineWidth = 1.25;
+          ctx.beginPath();
+          ctx.moveTo(x, axisY);
+          ctx.lineTo(x, axisY + 6);
+          ctx.stroke();
+
+          if (d > 0 && d < maxDist - 80) {
+            ctx.strokeStyle = gridColor;
+            ctx.lineWidth = 0.7;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(x, pad.t);
+            ctx.lineTo(x, axisY);
+            ctx.stroke();
+            ctx.setLineDash([]);
+          }
+
+          ctx.fillStyle = mutedColor;
+          ctx.fillText(String(d / 1000), x, H - 2);
+        } else {
+          // 500m: short tick upward into chart + downward
+          ctx.strokeStyle = mutedColor;
+          ctx.globalAlpha = 0.55;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(x, axisY - 6);
+          ctx.lineTo(x, axisY + 4);
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      // End label if not on exact km
+      const endKm = maxDist / 1000;
+      if (Math.abs(endKm - Math.round(endKm)) > 0.05) {
+        ctx.fillStyle = mutedColor;
+        ctx.fillText(endKm.toFixed(1), pad.l + plotW, H - 2);
+      }
+    }
+
+    /** Sample series along distance for overlay charts */
+    function sampleSeries(run, mode, stepM = 50) {
+      const pts = run.points;
+      if (!pts.length) return [];
+      const total = pts[pts.length - 1].dist;
+      const out = [];
+      for (let d = 0; d <= total; d += stepM) {
+        // find segment
+        let i = 1;
+        while (i < pts.length && pts[i].dist < d) i++;
+        if (i >= pts.length) i = pts.length - 1;
+        const prev = pts[i - 1] || pts[0];
+        const curr = pts[i];
+        const seg = curr.dist - prev.dist;
+        const ratio = seg > 0 ? (d - prev.dist) / seg : 0;
+        let val = null;
+        if (mode === 'hr') {
+          if (prev.hr != null && curr.hr != null) val = prev.hr + (curr.hr - prev.hr) * ratio;
+          else val = curr.hr ?? prev.hr;
+        } else if (mode === 'elev') {
+          if (prev.ele != null && curr.ele != null) val = prev.ele + (curr.ele - prev.ele) * ratio;
+          else val = curr.ele ?? prev.ele;
+        } else if (mode === 'pace') {
+          // instantaneous pace from nearby points (±30s or ±100m window)
+          const win = 80; // meters
+          let j0 = i, j1 = i;
+          while (j0 > 0 && pts[i].dist - pts[j0].dist < win) j0--;
+          while (j1 < pts.length - 1 && pts[j1].dist - pts[i].dist < win) j1++;
+          const dd = pts[j1].dist - pts[j0].dist;
+          const dt0 = pts[j0].dt, dt1 = pts[j1].dt;
+          if (dd > 10 && dt0 != null && dt1 != null && dt1 > dt0) {
+            val = ((dt1 - dt0) / dd) * 1000; // sec/km
+          }
+        }
+        if (val != null && isFinite(val)) out.push({ dist: d, val });
+      }
+      return out;
+    }
+
+    function drawOverlayChart(canvasId, legendId, mode) {
+      const canvas = $('#' + canvasId);
+      const legend = $('#' + legendId);
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      if (rect.width < 10) return;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const visible = runsForMapAndCompare();
+      const series = visible.map(r => ({
+        run: r,
+        data: sampleSeries(r, mode)
+      })).filter(s => s.data.length >= 2);
+
+      const styles = getComputedStyle(document.documentElement);
+      const gridColor = styles.getPropertyValue('--chart-grid').trim() || 'rgba(45,58,79,0.8)';
+      const mutedColor = styles.getPropertyValue('--muted').trim() || '#8b9cb3';
+
+      if (!series.length) {
+        ctx.fillStyle = mutedColor;
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t('noOverlayData'), W / 2, H / 2);
+        if (legend) legend.innerHTML = '';
+        return;
+      }
+
+      let minV = Infinity, maxV = -Infinity, maxDist = 0;
+      series.forEach(s => {
+        s.data.forEach(p => {
+          if (p.val < minV) minV = p.val;
+          if (p.val > maxV) maxV = p.val;
+        });
+        const last = s.data[s.data.length - 1].dist;
+        if (last > maxDist) maxDist = last;
+      });
+      if (mode === 'pace') {
+        // pad pace range
+        minV = Math.max(120, minV - 15); // not faster than ~2:00/km for scale
+        maxV = maxV + 15;
+      } else if (mode === 'elev') {
+        const padE = Math.max(5, (maxV - minV) * 0.1 || 5);
+        minV -= padE;
+        maxV += padE;
+      } else {
+        // HR etc.
+        minV = Math.max(40, minV - 5);
+        maxV = maxV + 5;
+      }
+      if (maxV <= minV) { maxV = minV + 1; }
+
+      const pad = { t: 10, b: 20, l: 40, r: 10 };
+      const plotW = W - pad.l - pad.r;
+      const plotH = H - pad.t - pad.b;
+
+      // grid + y labels
+      ctx.strokeStyle = gridColor;
+      ctx.lineWidth = 1;
+      ctx.fillStyle = mutedColor;
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + plotH * (i / 4);
+        // For pace: higher pace (slower) at bottom visually? Use higher value at bottom (normal)
+        const val = maxV - (maxV - minV) * (i / 4);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(W - pad.r, y);
+        ctx.stroke();
+        const label = mode === 'pace'
+          ? fmt.pace(val).replace('/km', '')
+          : mode === 'elev'
+            ? Math.round(val) + 'm'
+            : String(Math.round(val));
+        ctx.fillText(label, pad.l - 4, y + 3);
+      }
+
+      drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor);
+
+      // lines
+      series.forEach(s => {
+        ctx.beginPath();
+        ctx.strokeStyle = s.run.color;
+        ctx.lineWidth = s.run.id === selectedId ? 2.5 : 1.5;
+        ctx.globalAlpha = s.run.id === selectedId ? 1 : 0.75;
+        s.data.forEach((p, i) => {
+          const x = pad.l + (p.dist / maxDist) * plotW;
+          // y: higher value near top for HR; same for pace (slower = higher sec/km = higher on chart)
+          const y = pad.t + plotH * (1 - (p.val - minV) / (maxV - minV));
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      });
+
+      if (legend) {
+        legend.innerHTML = series.map(s =>
+          `<span><i style="background:${s.run.color}"></i>${s.run.name.slice(0, 18)}</span>`
+        ).join('');
+      }
+    }
+
+    function renderOverlayCharts() {
+      drawOverlayChart('paceOverlayChart', 'paceOverlayLegend', 'pace');
+      drawOverlayChart('hrOverlayChart', 'hrOverlayLegend', 'hr');
+      drawOverlayChart('elevOverlayChart', 'elevOverlayLegend', 'elev');
+    }
+
+    function drawElevChart(points) {
+      const canvas = $('#elevChart');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.parentElement.getBoundingClientRect();
+      if (rect.width < 10) return;
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const W = rect.width, H = rect.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const styles = getComputedStyle(document.documentElement);
+      const gridColor = styles.getPropertyValue('--chart-grid').trim() || 'rgba(45,58,79,0.8)';
+      const mutedColor = styles.getPropertyValue('--muted').trim() || '#8b9cb3';
+      const accent = styles.getPropertyValue('--accent').trim() || '#3b82f6';
+      const green = styles.getPropertyValue('--green').trim() || '#22c55e';
+
+      const withEle = points.filter(p => p.ele != null && p.dist != null);
+      if (withEle.length < 2) {
+        ctx.fillStyle = mutedColor;
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(t('noElevData'), W / 2, H / 2);
+        return;
+      }
+
+      let minE = Math.min(...withEle.map(p => p.ele));
+      let maxE = Math.max(...withEle.map(p => p.ele));
+      const padE = Math.max(5, (maxE - minE) * 0.1);
+      minE -= padE;
+      maxE += padE;
+      if (maxE <= minE) maxE = minE + 10;
+      const maxDist = withEle[withEle.length - 1].dist;
+
+      const pad = { t: 10, b: 20, l: 40, r: 10 };
+      const plotW = W - pad.l - pad.r;
+      const plotH = H - pad.t - pad.b;
+
+      // grid
+      ctx.strokeStyle = gridColor;
+      ctx.lineWidth = 1;
+      ctx.fillStyle = mutedColor;
+      ctx.font = '10px sans-serif';
+      ctx.textAlign = 'right';
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + plotH * (i / 4);
+        const val = maxE - (maxE - minE) * (i / 4);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(W - pad.r, y);
+        ctx.stroke();
+        ctx.fillText(Math.round(val) + 'm', pad.l - 4, y + 3);
+      }
+
+      // filled area under profile
+      ctx.beginPath();
+      withEle.forEach((p, i) => {
+        const x = pad.l + (p.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (p.ele - minE) / (maxE - minE));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      const lastX = pad.l + plotW;
+      const baseY = pad.t + plotH;
+      ctx.lineTo(lastX, baseY);
+      ctx.lineTo(pad.l, baseY);
+      ctx.closePath();
+      ctx.fillStyle = accent + '33';
+      // fallback if accent is not hex
+      try {
+        ctx.fillStyle = accent.length <= 7 ? accent + '33' : 'rgba(59,130,246,0.2)';
+      } catch (_) {
+        ctx.fillStyle = 'rgba(59,130,246,0.2)';
+      }
+      ctx.fill();
+
+      // line
+      ctx.beginPath();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      withEle.forEach((p, i) => {
+        const x = pad.l + (p.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (p.ele - minE) / (maxE - minE));
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // min / max markers
+      const minPt = withEle.reduce((a, b) => a.ele <= b.ele ? a : b);
+      const maxPt = withEle.reduce((a, b) => a.ele >= b.ele ? a : b);
+      [[minPt, green], [maxPt, styles.getPropertyValue('--red').trim() || '#ef4444']].forEach(([pt, color]) => {
+        const x = pad.l + (pt.dist / maxDist) * plotW;
+        const y = pad.t + plotH * (1 - (pt.ele - minE) / (maxE - minE));
+        ctx.beginPath();
+        ctx.fillStyle = color;
+        ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      drawDistanceAxis(ctx, pad, plotW, plotH, H, maxDist, mutedColor, gridColor);
+    }
+
+    function exportCompareCsv() {
+      const visible = runsForMapAndCompare();
+      if (!visible.length) return;
+
+      const rows = [];
+      // Overview section
+      rows.push([t('compareOverview')]);
+      rows.push([t('loadedRoutes'), ...visible.map(r => r.name)]);
+      rows.push([t('date'), ...visible.map(r => fmt.date(r.summary.startTime))]);
+      rows.push([t('start'), ...visible.map(r => fmt.clock(r.summary.startTime))]);
+      rows.push([t('dist'), ...visible.map(r => (r.summary.dist / 1000).toFixed(3))]);
+      rows.push([t('elapsed'), ...visible.map(r => fmt.time(r.summary.duration))]);
+      rows.push([t('avgPace'), ...visible.map(r => fmt.pace(r.summary.pace))]);
+      rows.push([t('avgHr'), ...visible.map(r => r.summary.avgHr != null ? Math.round(r.summary.avgHr) : '')]);
+      rows.push([t('maxHr'), ...visible.map(r => r.summary.maxHr != null ? Math.round(r.summary.maxHr) : '')]);
+      rows.push([t('elevGain'), ...visible.map(r => Math.round(r.summary.elevGain))]);
+      rows.push([t('weatherTemp'), ...visible.map(r => r.weather && r.weather.status === 'ok' && r.weather.temp != null ? r.weather.temp.toFixed(1) : '')]);
+      rows.push([t('weatherHumidity'), ...visible.map(r => r.weather && r.weather.status === 'ok' && r.weather.humidity != null ? Math.round(r.weather.humidity) : '')]);
+      rows.push([t('weatherWind'), ...visible.map(r => r.weather && r.weather.status === 'ok' && r.weather.wind != null ? r.weather.wind.toFixed(1) : '')]);
+      rows.push([]);
+
+      // Pace by km
+      rows.push([t('comparePace')]);
+      rows.push([t('thKm'), ...visible.map(r => r.name)]);
+      const maxKm = Math.max(...visible.map(r => r.splits.filter(s => !s.partial).length), 0);
+      for (let k = 1; k <= maxKm; k++) {
+        rows.push([
+          k,
+          ...visible.map(r => {
+            const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+            return s && s.pace != null ? fmt.pace(s.pace) : '';
+          })
+        ]);
+      }
+      rows.push([]);
+
+      // HR by km
+      rows.push([t('compareHr')]);
+      rows.push([t('thKm'), ...visible.map(r => r.name)]);
+      for (let k = 1; k <= maxKm; k++) {
+        rows.push([
+          k,
+          ...visible.map(r => {
+            const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+            return s && s.avgHr != null ? Math.round(s.avgHr) : '';
+          })
+        ]);
+      }
+
+      const csv = rows.map(row =>
+        row.map(cell => {
+          const s = String(cell ?? '');
+          return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+        }).join(',')
+      ).join('\n');
+
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `gpx-compare-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function renderSplits(splits) {
+      const tbody = $('#splitsBody');
+      const paces = splits.filter(s => s.pace != null).map(s => s.pace);
+      const avgPace = paces.length ? paces.reduce((a, b) => a + b, 0) / paces.length : null;
+
+      tbody.innerHTML = splits.map((s, idx) => {
+        const label = s.partial ? s.km.toFixed(2) : Math.round(s.km);
+        const paceClass = (avgPace && s.pace != null)
+          ? (s.pace < avgPace * 0.97 ? 'split-pace-fast' : (s.pace > avgPace * 1.03 ? 'split-pace-slow' : ''))
+          : '';
+        return `<tr data-idx="${idx}">
+          <td><span class="km-badge">${label}</span></td>
+          <td>${fmt.time(s.cumDuration)}</td>
+          <td class="${paceClass}">${fmt.pace(s.pace)}</td>
+          <td>${fmt.hr(s.avgHr)}</td>
+          <td>${fmt.elev(s.elevDelta)}</td>
+        </tr>`;
+      }).join('');
+
+      tbody.querySelectorAll('tr').forEach(tr => {
+        tr.addEventListener('click', () => {
+          tbody.querySelectorAll('tr').forEach(r => r.classList.remove('active'));
+          tr.classList.add('active');
+          const idx = parseInt(tr.dataset.idx, 10);
+          const run = runs.find(r => r.id === selectedId);
+          if (run && run.splits[idx]) {
+            const s = run.splits[idx];
+            map.setView([s.lat, s.lon], Math.max(map.getZoom(), 16), { animate: true });
+          }
+        });
+      });
+    }
+
+    function renderCompare() {
+      const visible = runsForMapAndCompare();
+      if (visible.length === 0) return;
+
+      // Summary comparison
+      const sumTable = $('#compareSummary');
+      const metrics = [
+        { key: 'startTime', label: t('date'), fmt: (r) => fmt.date(r.summary.startTime), best: null },
+        { key: 'startClock', label: t('start'), fmt: (r) => fmt.clock(r.summary.startTime), best: null },
+        { key: 'dist', label: t('dist'), fmt: (r) => fmt.dist(r.summary.dist), best: 'max' },
+        { key: 'duration', label: t('elapsed'), fmt: (r) => fmt.time(r.summary.duration), best: 'min' },
+        { key: 'pace', label: t('avgPace'), fmt: (r) => fmt.pace(r.summary.pace), best: 'min' },
+        { key: 'avgHr', label: t('avgHr'), fmt: (r) => fmt.hr(r.summary.avgHr), best: null },
+        { key: 'maxHr', label: t('maxHr'), fmt: (r) => fmt.hr(r.summary.maxHr), best: null },
+        { key: 'elevGain', label: t('elevGain'), fmt: (r) => Math.round(r.summary.elevGain) + ' m', best: null },
+        { key: 'wTemp', label: t('weatherTemp'), fmt: (r) => weatherLabel(r, 'temp'), best: null },
+        { key: 'wHum', label: t('weatherHumidity'), fmt: (r) => weatherLabel(r, 'humidity'), best: null },
+        { key: 'wWind', label: t('weatherWind'), fmt: (r) => weatherLabel(r, 'wind'), best: null },
+      ];
+
+      sumTable.querySelector('thead').innerHTML = `<tr>
+        <th></th>
+        ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,12)}</th>`).join('')}
+      </tr>`;
+      sumTable.querySelector('tbody').innerHTML = metrics.map(m => {
+        let bestVal = null;
+        if (m.best === 'min') {
+          bestVal = Math.min(...visible.map(r => r.summary[m.key]).filter(v => v != null));
+        } else if (m.best === 'max') {
+          bestVal = Math.max(...visible.map(r => r.summary[m.key]).filter(v => v != null));
+        }
+        return `<tr>
+          <td>${m.label}</td>
+          ${visible.map(r => {
+            const v = r.summary[m.key];
+            const isBest = m.best && v != null && v === bestVal;
+            return `<td class="${isBest ? 'best' : ''}">${m.fmt(r)}</td>`;
+          }).join('')}
+        </tr>`;
+      }).join('');
+
+      // Pace splits comparison
+      const maxKm = Math.max(...visible.map(r =>
+        r.splits.filter(s => !s.partial).length
+      ));
+      const paceTable = $('#compareSplits');
+      paceTable.querySelector('thead').innerHTML = `<tr>
+        <th>${t('thKm')}</th>
+        ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,10)}</th>`).join('')}
+      </tr>`;
+      let paceRows = '';
+      for (let k = 1; k <= maxKm; k++) {
+        const vals = visible.map(r => {
+          const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+          return s ? s.pace : null;
+        });
+        const best = Math.min(...vals.filter(v => v != null));
+        paceRows += `<tr>
+          <td><span class="km-badge">${k}</span></td>
+          ${vals.map(v => `<td class="${v != null && v === best ? 'best' : ''}">${fmt.pace(v)}</td>`).join('')}
+        </tr>`;
+      }
+      paceTable.querySelector('tbody').innerHTML = paceRows;
+
+      // HR splits comparison
+      const hrTable = $('#compareHR');
+      hrTable.querySelector('thead').innerHTML = `<tr>
+        <th>${t('thKm')}</th>
+        ${visible.map(r => `<th class="color-dot" style="--dot-color:${r.color}">${r.name.slice(0,10)}</th>`).join('')}
+      </tr>`;
+      let hrRows = '';
+      for (let k = 1; k <= maxKm; k++) {
+        const vals = visible.map(r => {
+          const s = r.splits.find(sp => !sp.partial && Math.round(sp.km) === k);
+          return s ? s.avgHr : null;
+        });
+        hrRows += `<tr>
+          <td><span class="km-badge">${k}</span></td>
+          ${vals.map(v => `<td>${fmt.hr(v)}</td>`).join('')}
+        </tr>`;
+      }
+      hrTable.querySelector('tbody').innerHTML = hrRows;
+      renderOverlayCharts();
+    }
+
+    function selectRun(id) {
+      selectedId = id;
+      const run = runs.find(r => r.id === id);
+      if (!run) return;
+      $('#detailName').textContent = '· ' + run.name;
+      renderSummary(run.summary);
+      renderHR(run.points);
+      drawElevChart(run.points);
+      renderSplits(run.splits);
+      renderRunList();
+      rebuildMapLayers();
+      update3DView(run);
+      if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+    }
+
+    // ========== 3D terrain route (Three.js) ==========
+    let scene3d = null, camera3d = null, renderer3d = null, controls3d = null;
+    let anim3dId = null, meshGroup3d = null;
+    let pathPlayback = {
+      samples: [],
+      duration: 0,
+      t: 0,
+      playing: false,
+      speed: 10,
+      marker: null,
+      lastFrame: null,
+      markerBaseSize: 1,
+      viewMode: 'overview',
+      overviewCam: null, // { pos, target } snapshot
+      doneLine: null,
+      remainLine: null,
+      routeColor: 0x3b82f6
+    };
+
+    function makeKmSprite(label, size) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 64;
+      canvas.height = 64;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 64, 64);
+      ctx.beginPath();
+      ctx.arc(32, 32, 26, 0, Math.PI * 2);
+      ctx.fillStyle = '#f59e0b';
+      ctx.fill();
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.fillStyle = '#111';
+      ctx.font = 'bold 26px system-ui,sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(String(label), 32, 33);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.needsUpdate = true;
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: true });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(size, size, 1);
+      return sprite;
+    }
+
+    function dispose3DMeshes() {
+      stopPlayback(false);
+      pathPlayback.marker = null;
+      pathPlayback.doneLine = null;
+      pathPlayback.remainLine = null;
+      pathPlayback.samples = [];
+      pathPlayback.duration = 0;
+      pathPlayback.t = 0;
+      pathPlayback.lastFrame = null;
+      if (meshGroup3d && scene3d) {
+        scene3d.remove(meshGroup3d);
+        meshGroup3d.traverse(obj => {
+          if (obj.geometry) obj.geometry.dispose();
+          if (obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach(m => {
+              if (m.map) m.map.dispose();
+              m.dispose();
+            });
+          }
+        });
+        meshGroup3d = null;
+      }
+    }
+
+    function init3D() {
+      const wrap = $('#view3dWrap');
+      if (!wrap || typeof THREE === 'undefined') return false;
+      if (renderer3d) return true;
+
+      const w = wrap.clientWidth || 300;
+      const h = wrap.clientHeight || 220;
+
+      scene3d = new THREE.Scene();
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1419';
+      scene3d.background = new THREE.Color(bg);
+
+      camera3d = new THREE.PerspectiveCamera(50, w / h, 0.1, 50000);
+      camera3d.position.set(200, 150, 200);
+
+      renderer3d = new THREE.WebGLRenderer({ antialias: true });
+      renderer3d.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer3d.setSize(w, h);
+      const hint = wrap.querySelector('.view3d-hint');
+      if (hint) wrap.insertBefore(renderer3d.domElement, hint);
+      else wrap.appendChild(renderer3d.domElement);
+
+      if (typeof THREE.OrbitControls === 'function') {
+        controls3d = new THREE.OrbitControls(camera3d, renderer3d.domElement);
+      }
+      if (controls3d) {
+        controls3d.enableDamping = true;
+        controls3d.dampingFactor = 0.08;
+        controls3d.maxPolarAngle = Math.PI * 0.48;
+        controls3d.minDistance = 20;
+        controls3d.maxDistance = 8000;
+      }
+
+      scene3d.add(new THREE.AmbientLight(0xffffff, 0.75));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+      dir.position.set(100, 200, 80);
+      scene3d.add(dir);
+
+      (function animate(now) {
+        anim3dId = requestAnimationFrame(animate);
+        tickPlayback(now);
+        if (controls3d) controls3d.update();
+        if (renderer3d && scene3d && camera3d) renderer3d.render(scene3d, camera3d);
+      })();
+      return true;
+    }
+
+    function latLonToLocal(lat, lon, ele, origin, exaggerate) {
+      const R = 6371000;
+      const lat0 = origin.lat * Math.PI / 180;
+      const x = (lon - origin.lon) * Math.PI / 180 * R * Math.cos(lat0);
+      const z = -((lat - origin.lat) * Math.PI / 180 * R);
+      const y = ((ele != null ? ele : origin.ele0) - origin.ele0) * exaggerate;
+      return new THREE.Vector3(x, y, z);
+    }
+
+    function lonLatToTile(lon, lat, zoom) {
+      const n = Math.pow(2, zoom);
+      const x = Math.floor((lon + 180) / 360 * n);
+      const latRad = lat * Math.PI / 180;
+      const y = Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+      return { x, y, n };
+    }
+
+    function tileToLonLat(x, y, zoom) {
+      const n = Math.pow(2, zoom);
+      const lon = x / n * 360 - 180;
+      const latRad = Math.atan(Math.sinh(Math.PI * (1 - 2 * y / n)));
+      const lat = latRad * 180 / Math.PI;
+      return { lon, lat };
+    }
+
+    function tileUrl(style, z, x, y) {
+      // Esri ArcGIS Online tiles — no API key for light browser use (order is z/y/x)
+      if (style === 'sat') {
+        return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`;
+      }
+      // Street map (Carto free CDN now requires API key — do not use)
+      return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/${z}/${y}/${x}`;
+    }
+
+    function addMapGround(group, origin, minLat, maxLat, minLon, maxLon, style) {
+      if (style === 'none') return null;
+      // Choose zoom so we load a manageable number of tiles
+      let zoom = 16;
+      for (let z = 18; z >= 12; z--) {
+        const a = lonLatToTile(minLon, maxLat, z); // NW
+        const b = lonLatToTile(maxLon, minLat, z); // SE
+        const nx = b.x - a.x + 1;
+        const ny = b.y - a.y + 1;
+        if (nx * ny <= 36) { zoom = z; break; }
+        zoom = z;
+      }
+      const nw = lonLatToTile(minLon, maxLat, zoom);
+      const se = lonLatToTile(maxLon, minLat, zoom);
+      const x0 = Math.min(nw.x, se.x);
+      const x1 = Math.max(nw.x, se.x);
+      const y0 = Math.min(nw.y, se.y);
+      const y1 = Math.max(nw.y, se.y);
+      const loader = new THREE.TextureLoader();
+      loader.crossOrigin = 'anonymous';
+      const tileGroup = new THREE.Group();
+      tileGroup.name = 'mapGround';
+
+      for (let tx = x0; tx <= x1; tx++) {
+        for (let ty = y0; ty <= y1; ty++) {
+          const ul = tileToLonLat(tx, ty, zoom);
+          const br = tileToLonLat(tx + 1, ty + 1, zoom);
+          const pUL = latLonToLocal(ul.lat, ul.lon, origin.ele0, origin, 1);
+          const pUR = latLonToLocal(ul.lat, br.lon, origin.ele0, origin, 1);
+          const pBL = latLonToLocal(br.lat, ul.lon, origin.ele0, origin, 1);
+          const pBR = latLonToLocal(br.lat, br.lon, origin.ele0, origin, 1);
+          const w = Math.hypot(pUR.x - pUL.x, pUR.z - pUL.z);
+          const h = Math.hypot(pBL.x - pUL.x, pBL.z - pUL.z);
+          const cx = (pUL.x + pBR.x) / 2;
+          const cz = (pUL.z + pBR.z) / 2;
+          const geo = new THREE.PlaneGeometry(w, h);
+          // Plane is XY by default; rotate to XZ (ground)
+          geo.rotateX(-Math.PI / 2);
+          const mat = new THREE.MeshBasicMaterial({
+            color: 0x888888,
+            side: THREE.DoubleSide,
+            depthWrite: true
+          });
+          const mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(cx, -0.15, cz); // slightly below path
+          tileGroup.add(mesh);
+          const url = tileUrl(style, zoom, tx, ty);
+          loader.load(url, (tex) => {
+            tex.minFilter = THREE.LinearFilter;
+            tex.magFilter = THREE.LinearFilter;
+            mat.map = tex;
+            mat.color.set(0xffffff);
+            mat.needsUpdate = true;
+          }, undefined, () => { /* keep grey fallback */ });
+        }
+      }
+      group.add(tileGroup);
+      return tileGroup;
+    }
+
+    function update3DView(run) {
+      if (!run || !run.points || run.points.length < 2) return;
+      if (!init3D()) return;
+
+      dispose3DMeshes();
+      meshGroup3d = new THREE.Group();
+
+      const pts = run.points;
+      const eles = pts.map(p => p.ele).filter(e => e != null);
+      const ele0 = eles.length ? Math.min(...eles) : 0;
+      const origin = { lat: pts[0].lat, lon: pts[0].lon, ele0 };
+      const exaggerate = parseFloat($('#elevScale')?.value) || 4;
+
+      const step = Math.max(1, Math.floor(pts.length / 1500));
+      const pathVecs = [];
+      for (let i = 0; i < pts.length; i += step) {
+        const p = pts[i];
+        pathVecs.push(latLonToLocal(p.lat, p.lon, p.ele, origin, exaggerate));
+      }
+      const last = pts[pts.length - 1];
+      pathVecs.push(latLonToLocal(last.lat, last.lon, last.ele, origin, exaggerate));
+
+      let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+      pathVecs.forEach(v => {
+        if (v.x < minX) minX = v.x;
+        if (v.x > maxX) maxX = v.x;
+        if (v.z < minZ) minZ = v.z;
+        if (v.z > maxZ) maxZ = v.z;
+      });
+      const midX = (minX + maxX) / 2;
+      const midZ = (minZ + maxZ) / 2;
+      // Use radius from centre so elongated routes still fit on the grid
+      let maxR = 50;
+      pathVecs.forEach(v => {
+        const r = Math.hypot(v.x - midX, v.z - midZ);
+        if (r > maxR) maxR = r;
+      });
+      const span = Math.max(maxX - minX, maxZ - minZ, maxR * 2, 50);
+      const gridSize = span * 2.2;
+
+      // Real map ground (street / satellite) or plain grid
+      let minLat = Infinity, maxLat = -Infinity, minLon = Infinity, maxLon = -Infinity;
+      pts.forEach(p => {
+        if (p.lat < minLat) minLat = p.lat;
+        if (p.lat > maxLat) maxLat = p.lat;
+        if (p.lon < minLon) minLon = p.lon;
+        if (p.lon > maxLon) maxLon = p.lon;
+      });
+      const pad = 0.0015; // ~150m
+      minLat -= pad; maxLat += pad; minLon -= pad; maxLon += pad;
+      const mapStyle = $('#mapStyle3d')?.value || 'street';
+      if (mapStyle === 'none') {
+        const grid = new THREE.GridHelper(gridSize, 24, 0x3b82f6, 0x2d3a4f);
+        grid.position.set(midX, 0, midZ);
+        meshGroup3d.add(grid);
+      } else {
+        addMapGround(meshGroup3d, origin, minLat, maxLat, minLon, maxLon, mapStyle);
+        // subtle grid overlay for scale
+        const grid = new THREE.GridHelper(gridSize, 12, 0x3b82f6, 0x1a2332);
+        grid.position.set(midX, 0.05, midZ);
+        grid.material.forEach ? grid.material.forEach(m => { m.transparent = true; m.opacity = 0.15; }) : null;
+        if (Array.isArray(grid.material)) {
+          grid.material.forEach(m => { m.transparent = true; m.opacity = 0.12; });
+        } else if (grid.material) {
+          grid.material.transparent = true;
+          grid.material.opacity = 0.12;
+        }
+        meshGroup3d.add(grid);
+      }
+
+      if (pathVecs.length >= 2) {
+        const ribbonPositions = [];
+        const ribbonIndices = [];
+        for (let i = 0; i < pathVecs.length; i++) {
+          const v = pathVecs[i];
+          ribbonPositions.push(v.x, Math.max(0, v.y), v.z);
+          ribbonPositions.push(v.x, 0, v.z);
+        }
+        for (let i = 0; i < pathVecs.length - 1; i++) {
+          const a = i * 2, b = i * 2 + 1, c = i * 2 + 2, d = i * 2 + 3;
+          ribbonIndices.push(a, b, c, b, d, c);
+        }
+        const ribbonGeo = new THREE.BufferGeometry();
+        ribbonGeo.setAttribute('position', new THREE.Float32BufferAttribute(ribbonPositions, 3));
+        ribbonGeo.setIndex(ribbonIndices);
+        ribbonGeo.computeVertexNormals();
+        meshGroup3d.add(new THREE.Mesh(ribbonGeo, new THREE.MeshPhongMaterial({
+          color: 0x3b82f6, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false
+        })));
+      }
+
+      const routeColor = run.color || 0x3b82f6;
+      pathPlayback.routeColor = routeColor;
+      // Full route dim (ahead of marker); done segment solid — updated in positionAtPlaybackTime
+      const remainGeo = new THREE.BufferGeometry().setFromPoints(pathVecs);
+      const remainLine = new THREE.Line(remainGeo, new THREE.LineBasicMaterial({
+        color: routeColor, transparent: true, opacity: 0.28
+      }));
+      meshGroup3d.add(remainLine);
+      pathPlayback.remainLine = remainLine;
+      const doneGeo = new THREE.BufferGeometry().setFromPoints(pathVecs.slice(0, 1));
+      const doneLine = new THREE.Line(doneGeo, new THREE.LineBasicMaterial({ color: routeColor }));
+      meshGroup3d.add(doneLine);
+      pathPlayback.doneLine = doneLine;
+
+      const startMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(span * 0.006, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0x22c55e })
+      );
+      startMesh.position.copy(pathVecs[0]);
+      meshGroup3d.add(startMesh);
+
+      const endMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(span * 0.006, 12, 12),
+        new THREE.MeshBasicMaterial({ color: 0xef4444 })
+      );
+      endMesh.position.copy(pathVecs[pathVecs.length - 1]);
+      meshGroup3d.add(endMesh);
+
+      if (run.splits) {
+        const labelSize = Math.max(span * 0.022, 4);
+        run.splits.forEach(s => {
+          if (s.partial || s.lat == null) return;
+          const v = latLonToLocal(s.lat, s.lon, s.ele != null ? s.ele : ele0, origin, exaggerate);
+          const kmNum = Math.round(s.km);
+          const sprite = makeKmSprite(kmNum, labelSize);
+          sprite.position.set(v.x, v.y + labelSize * 0.35, v.z);
+          meshGroup3d.add(sprite);
+        });
+      }
+
+      // Playback samples (denser than display line) + moving marker
+      const pbStep = Math.max(1, Math.floor(pts.length / 4000));
+      const samples = [];
+      for (let i = 0; i < pts.length; i += pbStep) {
+        const p = pts[i];
+        const v = latLonToLocal(p.lat, p.lon, p.ele, origin, exaggerate);
+        let tt = p.dt;
+        if (tt == null && p.time && pts[0].time) tt = (p.time - pts[0].time) / 1000;
+        if (tt == null) tt = (p.dist != null ? p.dist / 3 : samples.length); // ~3 m/s fallback
+        samples.push({ x: v.x, y: v.y, z: v.z, t: tt, dist: p.dist || 0, ele: p.ele });
+      }
+      {
+        const p = pts[pts.length - 1];
+        const v = latLonToLocal(p.lat, p.lon, p.ele, origin, exaggerate);
+        let tt = p.dt;
+        if (tt == null && p.time && pts[0].time) tt = (p.time - pts[0].time) / 1000;
+        if (tt == null) tt = samples.length ? samples[samples.length - 1].t + 1 : 0;
+        samples.push({ x: v.x, y: v.y, z: v.z, t: tt, dist: p.dist || 0, ele: p.ele });
+      }
+      // Ensure monotonic time
+      for (let i = 1; i < samples.length; i++) {
+        if (samples[i].t < samples[i - 1].t) samples[i].t = samples[i - 1].t;
+      }
+      const duration = samples.length ? samples[samples.length - 1].t : 0;
+      pathPlayback.samples = samples;
+      pathPlayback.duration = duration;
+      pathPlayback.t = 0;
+      pathPlayback.playing = false;
+      pathPlayback.lastFrame = null;
+      // Playback marker — original size, 70% opacity
+      pathPlayback.markerBaseSize = Math.max(span * 0.005, 0.8);
+
+      const marker = new THREE.Mesh(
+        new THREE.SphereGeometry(pathPlayback.markerBaseSize, 12, 12),
+        new THREE.MeshBasicMaterial({
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.88,
+          depthWrite: false
+        })
+      );
+      if (samples.length) marker.position.set(samples[0].x, samples[0].y, samples[0].z);
+      meshGroup3d.add(marker);
+      pathPlayback.marker = marker;
+
+      scene3d.add(meshGroup3d);
+      positionAtPlaybackTime(0);
+      syncPlaybackUI();
+
+      const maxY = Math.max(...pathVecs.map(v => v.y), 10);
+      const minY = Math.min(...pathVecs.map(v => v.y), 0);
+      const fitR = Math.max(maxR, span * 0.5, 40);
+      const camDist = fitR * 1.8;
+      const targetY = (maxY + minY) * 0.35;
+
+      if (controls3d) {
+        controls3d.target.set(midX, targetY, midZ);
+        controls3d.minDistance = Math.max(15, fitR * 0.15);
+        controls3d.maxDistance = Math.max(500, fitR * 8);
+        controls3d.update();
+      }
+      // High-angle overview so the whole route stays in frame
+      camera3d.position.set(midX + camDist * 0.55, Math.max(maxY * 1.2, camDist * 0.65), midZ + camDist * 0.55);
+      camera3d.lookAt(midX, targetY, midZ);
+      if (controls3d) controls3d.update();
+
+      pathPlayback.overviewCam = {
+        pos: camera3d.position.clone(),
+        target: controls3d ? controls3d.target.clone() : new THREE.Vector3(midX, targetY, midZ),
+        minDistance: controls3d ? controls3d.minDistance : 15,
+        maxDistance: controls3d ? controls3d.maxDistance : 8000
+      };
+      pathPlayback.viewMode = $('#viewMode3d')?.value || 'overview';
+      applyViewModeCamera();
+
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#0f1419';
+      scene3d.background = new THREE.Color(bg);
+    }
+
+    function applyViewModeCamera() {
+      if (!camera3d) return;
+      const mode = pathPlayback.viewMode || 'overview';
+      if (mode === 'fpv') {
+        if (controls3d) {
+          controls3d.enabled = false;
+        }
+        positionAtPlaybackTime(pathPlayback.t);
+      } else {
+        if (controls3d) {
+          controls3d.enabled = true;
+          if (pathPlayback.overviewCam) {
+            camera3d.position.copy(pathPlayback.overviewCam.pos);
+            controls3d.target.copy(pathPlayback.overviewCam.target);
+            controls3d.minDistance = pathPlayback.overviewCam.minDistance;
+            controls3d.maxDistance = pathPlayback.overviewCam.maxDistance;
+            controls3d.update();
+          }
+        }
+      }
+    }
+
+    function resize3D() {
+      const wrap = $('#view3dWrap');
+      if (!wrap || !renderer3d || !camera3d) return;
+      const w = wrap.clientWidth || 300;
+      const h = wrap.clientHeight || 220;
+      camera3d.aspect = w / h;
+      camera3d.updateProjectionMatrix();
+      renderer3d.setSize(w, h);
+    }
+
+    function fmtPlayTime(sec) {
+      if (sec == null || isNaN(sec)) return '0:00';
+      sec = Math.max(0, Math.floor(sec));
+      const h = Math.floor(sec / 3600);
+      const m = Math.floor((sec % 3600) / 60);
+      const s = sec % 60;
+      if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+      return `${m}:${String(s).padStart(2,'0')}`;
+    }
+
+    function syncPlaybackUI() {
+      const scrub = $('#scrub3d');
+      const timeEl = $('#playbackTime');
+      const playBtn = $('#play3dBtn');
+      const dur = pathPlayback.duration || 0;
+      const cur = Math.min(pathPlayback.t, dur);
+      if (scrub) {
+        scrub.value = dur > 0 ? String(Math.round((cur / dur) * 1000)) : '0';
+      }
+      if (timeEl) timeEl.textContent = `${fmtPlayTime(cur)} / ${fmtPlayTime(dur)}`;
+      if (playBtn) playBtn.textContent = pathPlayback.playing ? t('pause3d') : t('play3d');
+    }
+
+    function positionAtPlaybackTime(timeSec) {
+      const samples = pathPlayback.samples;
+      const marker = pathPlayback.marker;
+      if (!samples.length || !marker) return;
+      const t = Math.max(0, Math.min(timeSec, pathPlayback.duration));
+      pathPlayback.t = t;
+      // Binary search segment
+      let lo = 0, hi = samples.length - 1;
+      while (lo < hi - 1) {
+        const mid = (lo + hi) >> 1;
+        if (samples[mid].t <= t) lo = mid;
+        else hi = mid;
+      }
+      const a = samples[lo];
+      const b = samples[Math.min(lo + 1, samples.length - 1)];
+      const spanT = b.t - a.t;
+      const r = spanT > 1e-6 ? (t - a.t) / spanT : 0;
+      const x = a.x + (b.x - a.x) * r;
+      const y = a.y + (b.y - a.y) * r;
+      const z = a.z + (b.z - a.z) * r;
+      marker.position.set(x, y, z);
+
+      // Progress colouring: behind marker = solid, ahead = dim
+      if (pathPlayback.doneLine && pathPlayback.remainLine) {
+        const donePts = [];
+        for (let i = 0; i <= lo; i++) donePts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
+        donePts.push(new THREE.Vector3(x, y, z));
+        const remainPts = [new THREE.Vector3(x, y, z)];
+        for (let i = hi; i < samples.length; i++) remainPts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
+        pathPlayback.doneLine.geometry.dispose();
+        pathPlayback.doneLine.geometry = new THREE.BufferGeometry().setFromPoints(donePts.length >= 2 ? donePts : [new THREE.Vector3(x,y,z), new THREE.Vector3(x,y,z)]);
+        pathPlayback.remainLine.geometry.dispose();
+        pathPlayback.remainLine.geometry = new THREE.BufferGeometry().setFromPoints(remainPts.length >= 2 ? remainPts : [new THREE.Vector3(x,y,z), new THREE.Vector3(x,y,z)]);
+      }
+
+      // HUD: current km / total km + elevation
+      const distM = a.dist + ((b.dist != null && a.dist != null) ? (b.dist - a.dist) * r : 0);
+      const eleM = (a.ele != null && b.ele != null)
+        ? a.ele + (b.ele - a.ele) * r
+        : (a.ele != null ? a.ele : b.ele);
+      const totalM = samples[samples.length - 1].dist || 0;
+      update3DHud(distM, totalM, eleM);
+
+      // Chase / third-person: behind & slightly above, looking along the path
+      if ((pathPlayback.viewMode || 'overview') === 'fpv' && camera3d) {
+        let dx = b.x - a.x, dy = b.y - a.y, dz = b.z - a.z;
+        let len = Math.hypot(dx, dy, dz);
+        if (len < 1e-4 && lo > 0) {
+          const prev = samples[lo - 1];
+          dx = a.x - prev.x; dy = a.y - prev.y; dz = a.z - prev.z;
+          len = Math.hypot(dx, dy, dz);
+        }
+        if (len < 1e-4) { dx = 0; dy = 0; dz = -1; len = 1; }
+        dx /= len; dy /= len; dz /= len;
+        // Look further ahead for smoother heading
+        let lookI = Math.min(lo + 8, samples.length - 1);
+        const look = samples[lookI];
+        const back = Math.max(pathPlayback.markerBaseSize * 18, 14); // distance behind runner
+        const height = Math.max(pathPlayback.markerBaseSize * 6, 4.5); // low chase height
+        camera3d.position.set(x - dx * back, y + height, z - dz * back);
+        camera3d.lookAt(look.x, look.y + height * 0.25, look.z);
+        if (controls3d) {
+          controls3d.target.set(x + dx * 6, y + height * 0.2, z + dz * 6);
+        }
+      }
+    }
+
+    function tickPlayback(now) {
+      if (!pathPlayback.playing || !pathPlayback.samples.length) {
+        pathPlayback.lastFrame = now;
+        return;
+      }
+      if (pathPlayback.lastFrame == null) pathPlayback.lastFrame = now;
+      const dt = Math.min(0.1, (now - pathPlayback.lastFrame) / 1000);
+      pathPlayback.lastFrame = now;
+      const speed = pathPlayback.speed || 1;
+      pathPlayback.t += dt * speed;
+      if (pathPlayback.t >= pathPlayback.duration) {
+        pathPlayback.t = pathPlayback.duration;
+        pathPlayback.playing = false;
+        pathPlayback.lastFrame = null;
+      }
+      positionAtPlaybackTime(pathPlayback.t);
+      // Throttle DOM updates ~10fps
+      if (!tickPlayback._lastUi || now - tickPlayback._lastUi > 100) {
+        tickPlayback._lastUi = now;
+        syncPlaybackUI();
+      }
+    }
+
+    function stopPlayback(resetT) {
+      pathPlayback.playing = false;
+      pathPlayback.lastFrame = null;
+      if (resetT) {
+        pathPlayback.t = 0;
+        positionAtPlaybackTime(0);
+      }
+      syncPlaybackUI();
+    }
+
+    function togglePlayback() {
+      if (!pathPlayback.samples.length) return;
+      if (pathPlayback.playing) {
+        pathPlayback.playing = false;
+        pathPlayback.lastFrame = null;
+      } else {
+        if (pathPlayback.t >= pathPlayback.duration - 0.05) pathPlayback.t = 0;
+        pathPlayback.playing = true;
+        pathPlayback.lastFrame = null;
+      }
+      syncPlaybackUI();
+    }
+
+    let view3dExpanded = false;
+    function update3DHud(distM, totalM, eleM) {
+      const dEl = $('#hudDist');
+      const tEl = $('#hudDistTotal');
+      const eEl = $('#hudElev');
+      if (dEl) dEl.textContent = ((distM || 0) / 1000).toFixed(2);
+      if (tEl) tEl.textContent = ((totalM || 0) / 1000).toFixed(2);
+      if (eEl) eEl.textContent = eleM != null && isFinite(eleM) ? Math.round(eleM) : '—';
+    }
+
+    function set3DExpanded(on) {
+      const panel = $('#view3dPanel');
+      const btn = $('#expand3dBtn');
+      if (!panel) return;
+      view3dExpanded = !!on;
+      panel.classList.toggle('is-expanded', view3dExpanded);
+      document.body.classList.toggle('view3d-expanded', view3dExpanded);
+      if (btn) btn.textContent = view3dExpanded ? t('collapse3d') : t('expand3d');
+      // allow layout to settle then resize WebGL canvas
+      requestAnimationFrame(() => {
+        resize3D();
+        requestAnimationFrame(resize3D);
+      });
+    }
+    function toggle3DExpanded() {
+      set3DExpanded(!view3dExpanded);
+    }
+
+    function removeRun(id) {
+      const run = runs.find(r => r.id === id);
+      if (run) {
+        if (run.layer) map.removeLayer(run.layer);
+        if (run.markersLayer) map.removeLayer(run.markersLayer);
+      }
+      runs = runs.filter(r => r.id !== id);
+      deletePersistedRun(id);
+      if (selectedId === id) {
+        const filtered = getFilteredSortedRuns();
+        selectedId = filtered.length ? filtered[0].id : (runs.length ? runs[runs.length - 1].id : null);
+      }
+      if (runs.length === 0) {
+        $('#content').style.display = 'none';
+        $('#emptyState').style.display = 'block';
+        $('#clearBtn').disabled = true;
+        dispose3DMeshes();
+      } else if (selectedId) {
+        selectRun(selectedId);
+        renderCompare();
+      }
+      renderRunList();
+      rebuildMapLayers();
+    }
+
+    function addRun(name, points, opts = {}) {
+      const splits = computeSplits(points, 1000);
+      const summary = summarize(points);
+      const id = opts.id || ('run_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
+      const color = opts.color || RUN_COLORS[nextColorIdx % RUN_COLORS.length];
+      nextColorIdx++;
+      const tagIds = Array.isArray(opts.tagIds) ? opts.tagIds.slice() : [];
+      if (activeTagId !== TAG_ALL && !tagIds.includes(activeTagId)) tagIds.push(activeTagId);
+      const run = {
+        id, name: shortName(name), color,
+        points, splits, summary,
+        visible: opts.visible !== false,
+        tagIds,
+        uploadedAt: opts.uploadedAt || Date.now(),
+        weather: null,
+        layer: null, markersLayer: null
+      };
+      runs.push(run);
+      selectedId = id;
+
+      $('#emptyState').style.display = 'none';
+      $('#content').style.display = 'block';
+      $('#clearBtn').disabled = false;
+
+      persistRun(run);
+      renderTagBar();
+      renderRunList();
+      selectRun(id);
+      renderCompare();
+      fetchWeatherForRun(run);
+    }
+
+    function clearAll() {
+      if (runs.length && !confirm(t('clearAllConfirm'))) return;
+      runs.forEach(r => {
+        if (r.layer) map.removeLayer(r.layer);
+        if (r.markersLayer) map.removeLayer(r.markersLayer);
+      });
+      runs = [];
+      selectedId = null;
+      nextColorIdx = 0;
+      dispose3DMeshes();
+      $('#content').style.display = 'none';
+      $('#emptyState').style.display = 'block';
+      $('#clearBtn').disabled = true;
+      $('#fileInput').value = '';
+      renderRunList();
+    }
+
+    function loadFiles(fileList) {
+      const files = [...fileList].filter(f =>
+        f.name.toLowerCase().endsWith('.gpx') || f.type.includes('xml')
+      );
+      if (!files.length) {
+        showError(t('errSelectGpx'));
+        return;
+      }
+      let loaded = 0;
+      files.forEach(file => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          try {
+            const points = parseGPX(reader.result);
+            addRun(file.name, points);
+            loaded++;
+          } catch (err) {
+            showError(`${file.name}: ${err.message}`);
+          }
+        };
+        reader.onerror = () => showError(t('errReadFail', { name: file.name }));
+        reader.readAsText(file);
+      });
+    }
+
+    // ========== Events ==========
+    $('#fileInput').addEventListener('change', (e) => {
+      if (e.target.files.length) loadFiles(e.target.files);
+      e.target.value = '';
+    });
+    $('#clearBtn').addEventListener('click', clearAll);
+
+    document.body.addEventListener('dragover', (e) => e.preventDefault());
+    document.body.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
+    });
+
+    // Tabs
+    $$('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        $$('.tab').forEach(t => t.classList.remove('active'));
+        $$('.tab-panel').forEach(p => p.classList.remove('active'));
+        tab.classList.add('active');
+        $(`#tab-${tab.dataset.tab}`).classList.add('active');
+        if (tab.dataset.tab === 'compare') renderCompare();
+      });
+    });
+
+    // Map toggles
+    document.addEventListener('change', (e) => {
+      if (e.target.id === 'showMarkers' || e.target.id === 'showOtherMarkers' || e.target.id === 'showTracks') {
+        rebuildMapLayers();
+      }
+    });
+
+    // Language switch
+    $('#langSwitch').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-lang]');
+      if (btn) setLang(btn.dataset.lang);
+    });
+
+    // Theme toggle
+    $('#themeBtn').addEventListener('click', () => {
+      toggleTheme();
+      const run = runs.find(r => r.id === selectedId);
+      if (run && renderer3d) update3DView(run);
+    });
+
+    // CSV export
+    $('#exportCsvBtn').addEventListener('click', exportCompareCsv);
+
+    // 3D controls
+    const elevScaleEl = $('#elevScale');
+    if (elevScaleEl) {
+      elevScaleEl.addEventListener('input', () => {
+        const run = runs.find(r => r.id === selectedId);
+        if (run) update3DView(run);
+      });
+    }
+    const reset3dBtn = $('#reset3dBtn');
+    if (reset3dBtn) {
+      reset3dBtn.addEventListener('click', () => {
+        const run = runs.find(r => r.id === selectedId);
+        if (run) update3DView(run);
+      });
+    }
+
+    // 3D timeline playback
+    $('#play3dBtn')?.addEventListener('click', togglePlayback);
+    $('#speed3dSelect')?.addEventListener('change', (e) => {
+      const v = parseFloat(e.target.value);
+      pathPlayback.speed = isFinite(v) && v > 0 ? v : 1;
+    });
+    {
+      const speedEl = $('#speed3dSelect');
+      if (speedEl) pathPlayback.speed = parseFloat(speedEl.value) || 10;
+    }
+    $('#viewMode3d')?.addEventListener('change', (e) => {
+      pathPlayback.viewMode = e.target.value === 'fpv' ? 'fpv' : 'overview';
+      // Snapshot overview before leaving it
+      if (pathPlayback.viewMode === 'fpv' && camera3d && controls3d && controls3d.enabled) {
+        pathPlayback.overviewCam = {
+          pos: camera3d.position.clone(),
+          target: controls3d.target.clone(),
+          minDistance: controls3d.minDistance,
+          maxDistance: controls3d.maxDistance
+        };
+      }
+      applyViewModeCamera();
+    });
+    $('#mapStyle3d')?.addEventListener('change', () => {
+      const run = runs.find(r => r.id === selectedId);
+      if (run) update3DView(run);
+    });
+    $('#scrub3d')?.addEventListener('input', (e) => {
+      const dur = pathPlayback.duration || 0;
+      const ratio = parseInt(e.target.value, 10) / 1000;
+      pathPlayback.playing = false;
+      pathPlayback.lastFrame = null;
+      positionAtPlaybackTime(dur * ratio);
+      syncPlaybackUI();
+    });
+
+    // 3D expand / fullscreen
+    $('#expand3dBtn')?.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggle3DExpanded();
+    });
+    // Double-click map area to expand (single drag still rotates)
+    let _3dPtr = null;
+    const wrap3d = $('#view3dWrap');
+    if (wrap3d) {
+      wrap3d.addEventListener('pointerdown', (e) => {
+        if (e.target.closest('.view3d-expand-btn')) return;
+        _3dPtr = { x: e.clientX, y: e.clientY, t: Date.now() };
+      });
+      wrap3d.addEventListener('pointerup', (e) => {
+        if (!_3dPtr || e.target.closest('.view3d-expand-btn')) return;
+        const dx = Math.abs(e.clientX - _3dPtr.x);
+        const dy = Math.abs(e.clientY - _3dPtr.y);
+        const dt = Date.now() - _3dPtr.t;
+        _3dPtr = null;
+        // Short tap without drag → expand (when not already expanded)
+        if (!view3dExpanded && dx < 8 && dy < 8 && dt < 350) {
+          set3DExpanded(true);
+        }
+      });
+      wrap3d.addEventListener('dblclick', (e) => {
+        if (e.target.closest('.view3d-expand-btn')) return;
+        set3DExpanded(true);
+      });
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && view3dExpanded) {
+        set3DExpanded(false);
+      }
+    });
+
+    // Settings modal + Karvonen HR
+    function saveHrSettings() {
+      const maxEl = $('#hrMaxInput');
+      const restEl = $('#hrRestInput');
+      let max = parseInt(maxEl?.value, 10);
+      let rest = parseInt(restEl?.value, 10);
+      if (!isFinite(max) || max < 120) max = 120;
+      if (max > 230) max = 230;
+      if (!isFinite(rest) || rest < 30) rest = 30;
+      if (rest > 120) rest = 120;
+      if (rest >= max) rest = max - 1;
+      hrMax = max;
+      hrRest = rest;
+      localStorage.setItem('gpx-hr-max', String(hrMax));
+      localStorage.setItem('gpx-hr-rest', String(hrRest));
+      syncHrInputs();
+      const run = runs.find(r => r.id === selectedId);
+      if (run) renderHR(run.points);
+      closeSettings();
+    }
+
+    $('#settingsBtn')?.addEventListener('click', openSettings);
+    $('#hrSettingsLink')?.addEventListener('click', openSettings);
+    $('#settingsClose')?.addEventListener('click', closeSettings);
+    $('#settingsSave')?.addEventListener('click', saveHrSettings);
+    $('#clearStorageBtn')?.addEventListener('click', async () => {
+      if (!confirm(t('clearStorageConfirm'))) return;
+      try {
+        await idbClear('runs');
+        await idbClear('tags');
+      } catch (e) { console.warn(e); }
+      runs.forEach(r => {
+        if (r.layer) map.removeLayer(r.layer);
+        if (r.markersLayer) map.removeLayer(r.markersLayer);
+      });
+      runs = [];
+      tags = [];
+      selectedId = null;
+      activeTagId = TAG_ALL;
+      nextColorIdx = 0;
+      dispose3DMeshes();
+      $('#content').style.display = 'none';
+      $('#emptyState').style.display = 'block';
+      $('#clearBtn').disabled = true;
+      renderTagBar();
+      renderRunList();
+      closeSettings();
+    });
+    $('#settingsModal')?.addEventListener('click', (e) => {
+      if (e.target === $('#settingsModal')) closeSettings();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeSettings();
+    });
+
+    // Sort control
+    const sortSel = $('#sortSelect');
+    if (sortSel) {
+      sortSel.value = sortMode;
+      sortSel.addEventListener('change', () => {
+        sortMode = sortSel.value;
+        localStorage.setItem('gpx-sort', sortMode);
+        renderRunList();
+        if ($('#tab-compare')?.classList.contains('active')) renderCompare();
+      });
+    }
+
+    async function restoreFromStorage() {
+      try {
+        await openIDB();
+        const [rawRuns, rawTags] = await Promise.all([idbGetAll('runs'), idbGetAll('tags')]);
+        tags = (rawTags || []).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        const savedTag = localStorage.getItem('gpx-active-tag');
+        if (savedTag === TAG_ALL || tags.some(x => x.id === savedTag)) activeTagId = savedTag || TAG_ALL;
+        else activeTagId = TAG_ALL;
+
+        if (rawRuns && rawRuns.length) {
+          runs = rawRuns.map(reviveRun);
+          nextColorIdx = runs.length;
+          selectedId = runs[0]?.id || null;
+          $('#emptyState').style.display = 'none';
+          $('#content').style.display = 'block';
+          $('#clearBtn').disabled = false;
+          renderTagBar();
+          renderRunList();
+          if (selectedId) selectRun(selectedId);
+          renderCompare();
+          runs.forEach(r => fetchWeatherForRun(r));
+          showError(t('persistRestored', { n: runs.length }));
+        } else {
+          renderTagBar();
+        }
+      } catch (e) {
+        console.warn('restore failed', e);
+        renderTagBar();
+      }
+    }
+
+    // Init
+    applyTheme();
+    applyStaticI18n();
+    syncHrInputs();
+    initMap();
+    restoreFromStorage();
+    window.addEventListener('resize', () => {
+      if (map) map.invalidateSize();
+      const run = runs.find(r => r.id === selectedId);
+      if (run) {
+        drawHRChart(run.points);
+        drawElevChart(run.points);
+      }
+      resize3D();
+      if ($('#tab-compare')?.classList.contains('active')) renderOverlayCharts();
+    });
+  </script>
+</body>
+</html>
