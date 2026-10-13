@@ -3100,6 +3100,50 @@
       routeColor: 0x3b82f6
     };
 
+    function makeProgressTube(pts, radius, color, opacity) {
+      if (!pts || pts.length < 2) return null;
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const segs = Math.max(8, Math.min(120, pts.length * 2));
+      const geo = new THREE.TubeGeometry(curve, segs, radius, 5, false);
+      const mat = new THREE.MeshBasicMaterial({
+        color: color,
+        transparent: opacity < 0.99,
+        opacity: opacity,
+        depthWrite: opacity >= 0.95
+      });
+      return new THREE.Mesh(geo, mat);
+    }
+
+    function updateProgressPathMeshes(donePts, remainPts) {
+      if (!meshGroup3d) return;
+      const color = pathPlayback.routeColor || 0x3b82f6;
+      const rDone = Math.max((pathPlayback.markerBaseSize || 1) * 0.55, 0.45);
+      const rRemain = rDone * 0.85;
+      // remove old
+      if (pathPlayback.doneLine) {
+        meshGroup3d.remove(pathPlayback.doneLine);
+        pathPlayback.doneLine.geometry && pathPlayback.doneLine.geometry.dispose();
+        pathPlayback.doneLine.material && pathPlayback.doneLine.material.dispose();
+        pathPlayback.doneLine = null;
+      }
+      if (pathPlayback.remainLine) {
+        meshGroup3d.remove(pathPlayback.remainLine);
+        pathPlayback.remainLine.geometry && pathPlayback.remainLine.geometry.dispose();
+        pathPlayback.remainLine.material && pathPlayback.remainLine.material.dispose();
+        pathPlayback.remainLine = null;
+      }
+      const remain = makeProgressTube(remainPts, rRemain, color, 0.4);
+      const done = makeProgressTube(donePts, rDone, color, 1.0);
+      if (remain) {
+        meshGroup3d.add(remain);
+        pathPlayback.remainLine = remain;
+      }
+      if (done) {
+        meshGroup3d.add(done);
+        pathPlayback.doneLine = done;
+      }
+    }
+
     function makeKmSprite(label, size) {
       const canvas = document.createElement('canvas');
       canvas.width = 64;
@@ -3379,23 +3423,19 @@
         ribbonGeo.setIndex(ribbonIndices);
         ribbonGeo.computeVertexNormals();
         meshGroup3d.add(new THREE.Mesh(ribbonGeo, new THREE.MeshPhongMaterial({
-          color: 0x3b82f6, transparent: true, opacity: 0.28, side: THREE.DoubleSide, depthWrite: false
+          color: (run.color || 0x3b82f6), transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false
         })));
       }
 
       const routeColor = run.color || 0x3b82f6;
       pathPlayback.routeColor = routeColor;
-      // Full route dim (ahead of marker); done segment solid — updated in positionAtPlaybackTime
-      const remainGeo = new THREE.BufferGeometry().setFromPoints(pathVecs);
-      const remainLine = new THREE.Line(remainGeo, new THREE.LineBasicMaterial({
-        color: routeColor, transparent: true, opacity: 0.28
-      }));
-      meshGroup3d.add(remainLine);
-      pathPlayback.remainLine = remainLine;
-      const doneGeo = new THREE.BufferGeometry().setFromPoints(pathVecs.slice(0, 1));
-      const doneLine = new THREE.Line(doneGeo, new THREE.LineBasicMaterial({ color: routeColor }));
-      meshGroup3d.add(doneLine);
-      pathPlayback.doneLine = doneLine;
+      pathPlayback.doneLine = null;
+      pathPlayback.remainLine = null;
+      // Thick tubes (LineBasicMaterial is ~1px on most GPUs)
+      updateProgressPathMeshes(
+        pathVecs.slice(0, 1),
+        pathVecs
+      );
 
       const startMesh = new THREE.Mesh(
         new THREE.SphereGeometry(span * 0.006, 12, 12),
@@ -3579,17 +3619,24 @@
       const z = a.z + (b.z - a.z) * r;
       marker.position.set(x, y, z);
 
-      // Progress colouring: behind marker = solid, ahead = dim
-      if (pathPlayback.doneLine && pathPlayback.remainLine) {
+      // Progress colouring: behind marker = solid thick tube, ahead = dimmer tube
+      // Throttle mesh rebuild ~8fps to keep playback smooth
+      const nowMs = performance.now();
+      if (!updateProgressPathMeshes._last || nowMs - updateProgressPathMeshes._last > 120 || !pathPlayback.playing) {
+        updateProgressPathMeshes._last = nowMs;
         const donePts = [];
-        for (let i = 0; i <= lo; i++) donePts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
+        // downsample samples for tube perf
+        const step = Math.max(1, Math.floor(lo / 80));
+        for (let i = 0; i <= lo; i += step) donePts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
         donePts.push(new THREE.Vector3(x, y, z));
         const remainPts = [new THREE.Vector3(x, y, z)];
-        for (let i = hi; i < samples.length; i++) remainPts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
-        pathPlayback.doneLine.geometry.dispose();
-        pathPlayback.doneLine.geometry = new THREE.BufferGeometry().setFromPoints(donePts.length >= 2 ? donePts : [new THREE.Vector3(x,y,z), new THREE.Vector3(x,y,z)]);
-        pathPlayback.remainLine.geometry.dispose();
-        pathPlayback.remainLine.geometry = new THREE.BufferGeometry().setFromPoints(remainPts.length >= 2 ? remainPts : [new THREE.Vector3(x,y,z), new THREE.Vector3(x,y,z)]);
+        const rStep = Math.max(1, Math.floor((samples.length - hi) / 80));
+        for (let i = hi; i < samples.length; i += rStep) remainPts.push(new THREE.Vector3(samples[i].x, samples[i].y, samples[i].z));
+        if (remainPts.length === 1 && samples.length) {
+          const last = samples[samples.length - 1];
+          remainPts.push(new THREE.Vector3(last.x, last.y, last.z));
+        }
+        updateProgressPathMeshes(donePts, remainPts);
       }
 
       // HUD: current km / total km + elevation
