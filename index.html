@@ -1665,55 +1665,86 @@
 
       const start = sum.startTime;
       const end = sum.endTime;
-      // Expand slightly so boundary hours are included
-      const startDate = toDateStr(start);
-      let endDate = toDateStr(end);
-      // If run crosses midnight, endDate is already next day
       const startMs = start.getTime();
       const endMs = end.getTime();
+      const padMs = 3600000; // ±1 hour
 
-      const params = new URLSearchParams({
+      // UTC calendar days for archive range
+      const toUTCDateStr = (d) => {
+        const x = new Date(d.getTime());
+        const y = x.getUTCFullYear();
+        const m = String(x.getUTCMonth() + 1).padStart(2, '0');
+        const day = String(x.getUTCDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+      };
+      // Parse Open-Meteo time as UTC (we always request timezone=UTC)
+      const parseUTCHour = (ts) => {
+        // "2026-10-14T04:00" or with seconds
+        const s = String(ts).length <= 16 ? ts + ':00Z' : (String(ts).endsWith('Z') ? ts : ts + 'Z');
+        // Safer: force Z on date-time without offset
+        const normalized = /Z|[+-]\d{2}:?\d{2}$/.test(String(ts))
+          ? String(ts)
+          : String(ts).replace(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(:\d{2})?/, (_, a, b) => a + (b || ':00') + 'Z');
+        const t = new Date(normalized);
+        return isNaN(t.getTime()) ? null : t.getTime();
+      };
+
+      const ageDays = (Date.now() - endMs) / 86400000;
+      const preferArchive = ageDays > 5;
+
+      const common = {
         latitude: sum.lat.toFixed(4),
         longitude: sum.lon.toFixed(4),
-        start_date: startDate,
-        end_date: endDate,
         hourly: 'temperature_2m,relative_humidity_2m,wind_speed_10m',
-        timezone: 'auto',
+        timezone: 'UTC',
         wind_speed_unit: 'ms'
-      });
+      };
+
+      async function loadArchive() {
+        const params = new URLSearchParams({
+          ...common,
+          start_date: toUTCDateStr(new Date(startMs - padMs)),
+          end_date: toUTCDateStr(new Date(endMs + padMs))
+        });
+        const res = await fetch(`https://archive-api.open-meteo.com/v1/archive?${params}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data?.hourly?.time?.length) return null;
+        return { data, source: 'archive' };
+      }
+
+      async function loadForecast() {
+        const daysAgo = Math.ceil((Date.now() - startMs) / 86400000) + 2;
+        const pastDays = Math.min(92, Math.max(1, daysAgo));
+        const params = new URLSearchParams({
+          ...common,
+          past_days: String(pastDays),
+          forecast_days: '1'
+        });
+        const res = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (!data?.hourly?.time?.length) return null;
+        return { data, source: 'forecast' };
+      }
 
       try {
-        // Prefer archive (ERA5). Recent days may lag ~5 days — fallback to forecast past_days.
-        let source = 'archive';
-        let url = `https://archive-api.open-meteo.com/v1/archive?${params}`;
-        let res = await fetch(url);
-        let data = res.ok ? await res.json() : null;
-
-        const hasHourly = data && data.hourly && data.hourly.time && data.hourly.time.length;
-        if (!hasHourly) {
-          // Fallback: forecast API with past_days (good for last ~2 weeks)
-          source = 'forecast';
-          const daysAgo = Math.ceil((Date.now() - startMs) / 86400000) + 1;
-          const pastDays = Math.min(92, Math.max(1, daysAgo));
-          const fParams = new URLSearchParams({
-            latitude: sum.lat.toFixed(4),
-            longitude: sum.lon.toFixed(4),
-            hourly: 'temperature_2m,relative_humidity_2m,wind_speed_10m',
-            past_days: String(pastDays),
-            forecast_days: '1',
-            timezone: 'auto',
-            wind_speed_unit: 'ms'
-          });
-          res = await fetch(`https://api.open-meteo.com/v1/forecast?${fParams}`);
-          data = res.ok ? await res.json() : null;
+        let loaded = null;
+        if (preferArchive) {
+          loaded = await loadArchive();
+          if (!loaded) loaded = await loadForecast();
+        } else {
+          loaded = await loadForecast();
+          if (!loaded) loaded = await loadArchive();
         }
 
-        if (!data || !data.hourly || !data.hourly.time) {
+        if (!loaded) {
           run.weather = { status: 'error' };
           refreshWeatherUI(run);
           return;
         }
 
+        const { data, source } = loaded;
         const times = data.hourly.time;
         const temps = data.hourly.temperature_2m || [];
         const hums = data.hourly.relative_humidity_2m || [];
@@ -1721,24 +1752,24 @@
 
         const tempsSel = [], humsSel = [], windsSel = [];
         for (let i = 0; i < times.length; i++) {
-          // Open-Meteo times are local wall time when timezone=auto, parse as local
-          const t = new Date(times[i]);
-          const tMs = t.getTime();
-          // Include hour if it overlaps [start, end] (hour block starting at t)
+          const tMs = parseUTCHour(times[i]);
+          if (tMs == null) continue;
           const hourEnd = tMs + 3600000;
-          if (hourEnd > startMs && tMs < endMs) {
+          if (hourEnd > startMs - padMs && tMs < endMs + padMs) {
             if (temps[i] != null && !isNaN(temps[i])) tempsSel.push(temps[i]);
             if (hums[i] != null && !isNaN(hums[i])) humsSel.push(hums[i]);
             if (winds[i] != null && !isNaN(winds[i])) windsSel.push(winds[i]);
           }
         }
 
-        // If no overlap (timezone edge cases), take closest hours within ±3h of midpoint
+        // Fallback: nearest hours around midpoint
         if (!tempsSel.length && temps.length) {
           const mid = (startMs + endMs) / 2;
           let best = 0, bestDiff = Infinity;
           for (let i = 0; i < times.length; i++) {
-            const diff = Math.abs(new Date(times[i]).getTime() - mid);
+            const tMs = parseUTCHour(times[i]);
+            if (tMs == null) continue;
+            const diff = Math.abs(tMs - mid);
             if (diff < bestDiff) { bestDiff = diff; best = i; }
           }
           const lo = Math.max(0, best - 1);
@@ -1755,7 +1786,7 @@
           status: 'ok',
           temp: avg(tempsSel),
           humidity: avg(humsSel),
-          wind: avg(windsSel), // m/s
+          wind: avg(windsSel),
           samples: Math.max(tempsSel.length, humsSel.length, windsSel.length),
           lat: data.latitude,
           lon: data.longitude,
@@ -1763,7 +1794,6 @@
           place: null
         };
         refreshWeatherUI(run);
-        // Reverse-geocode grid point for a readable place name (best-effort)
         reverseGeocodePlace(data.latitude, data.longitude).then(place => {
           if (run.weather && run.weather.status === 'ok') {
             run.weather.place = place;
